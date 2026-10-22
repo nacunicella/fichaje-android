@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reloj simple: aro, agujas y el botón de arriba. Lienzo de 108dp con zona segura de 66dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,56m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0"
+        android:strokeWidth="5"
+        android:strokeColor="@color/ic_fg" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,43L54,56L63,62"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="5"
+        android:strokeColor="@color/ic_fg" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M47,28L61,28"
+        android:strokeLineCap="round"
+        android:strokeWidth="5"
+        android:strokeColor="@color/ic_fg" />
+</vector>

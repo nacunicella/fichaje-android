@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Fichaje</string>
+    <string name="widget_name">Fichaje</string>
+    <string name="widget_desc">Tu jornada de hoy, con botones para fichar y pausar</string>
+</resources>
