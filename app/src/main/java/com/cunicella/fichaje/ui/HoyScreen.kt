@@ -91,7 +91,10 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refresh() = viewModelScope.launch {
         runCatching { Snapshot.load() }
-            .onSuccess { s -> _ui.update { it.copy(loading = false, snap = s, error = null) } }
+            .onSuccess { s ->
+                _ui.update { it.copy(loading = false, snap = s, error = null) }
+                ClockWidget.show(getApplication(), s)
+            }
             .onFailure { e -> _ui.update { it.copy(loading = false, error = "No se pudo cargar: ${e.message ?: "sin conexión"}") } }
     }
 
@@ -114,7 +117,7 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
                     toast = result.getOrNull() ?: it.toast,
                 )
             }
-            ClockWidget.refreshAll(getApplication())
+            if (fresh != null) ClockWidget.show(getApplication(), fresh)
         }
     }
 

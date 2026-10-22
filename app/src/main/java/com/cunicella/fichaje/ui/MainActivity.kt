@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cunicella.fichaje.data.Supa
@@ -85,6 +86,11 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
     var tab by rememberSaveable { mutableStateOf(Tab.Hoy) }
     val hoy: HoyViewModel = viewModel()
     val ui by hoy.ui.collectAsStateWithLifecycle()
+    // al volver a la app (p. ej. después de fichar desde el widget) se recarga
+    LifecycleResumeEffect(Unit) {
+        hoy.refresh()
+        onPauseOrDispose { }
+    }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     var accountOpen by rememberSaveable { mutableStateOf(false) }
