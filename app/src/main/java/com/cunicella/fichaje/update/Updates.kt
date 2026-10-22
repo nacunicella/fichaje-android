@@ -67,6 +67,8 @@ object Updates {
                         read += n
                         if (total > 0) onProgress(read.toFloat() / total)
                     }
+                    // Algunas conexiones no cierran el canal al terminar: cortamos al llegar al total.
+                    if (total > 0 && read >= total) break
                 }
             }
         }
