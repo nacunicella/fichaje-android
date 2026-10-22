@@ -64,7 +64,7 @@ import kotlinx.datetime.Clock
  * Lo que muestra el widget. Se guarda en el estado del widget (no en la composición)
  * para que cada update muestre lo último: la app y los botones lo pisan con datos frescos.
  */
-private data class WidgetState(
+internal data class WidgetState(
     val status: String,
     val sub: String,
     val workedMs: Long = 0,
@@ -235,6 +235,7 @@ class ClockWidget : GlanceAppWidget() {
         suspend fun refreshAll(context: Context) = push(context, WidgetState.load())
 
         private suspend fun push(context: Context, s: WidgetState) {
+            ShiftNotification.update(context, s)
             runCatching {
                 val ids = GlanceAppWidgetManager(context).getGlanceIds(ClockWidget::class.java)
                 ids.forEach { id ->
@@ -257,34 +258,43 @@ class ClockWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = ClockWidget()
 }
 
-private suspend fun widgetAction(context: Context, id: GlanceId, block: suspend (Snapshot) -> Unit) {
-    ClockWidget.markBusy(context, id)
+/** Acciones de jornada compartidas por el widget y la notificación. */
+internal enum class ShiftAction { Start, PauseToggle, Stop }
+
+internal suspend fun runShiftAction(context: Context, action: ShiftAction) {
     runCatching {
         if (Supa.awaitSession()) {
-            val snap = Snapshot.load()
-            if (snap.me != null) block(snap)
+            val s = Snapshot.load()
+            val me = s.me
+            val open = s.myOpen
+            if (me != null) when (action) {
+                ShiftAction.Start -> if (open == null) Repo.start(me.id, holiday = false)
+                ShiftAction.PauseToggle -> if (open != null) {
+                    if (Calc.isPaused(open)) Repo.resume(open.id) else Repo.pause(open.id)
+                }
+                ShiftAction.Stop -> if (open != null) Repo.stop(open, Calc.currentRate(me, s.settings))
+            }
         }
     }
     ClockWidget.refreshAll(context)
 }
 
+private suspend fun widgetAction(context: Context, id: GlanceId, action: ShiftAction) {
+    ClockWidget.markBusy(context, id)
+    runShiftAction(context, action)
+}
+
 class StartAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) =
-        widgetAction(context, glanceId) { s -> if (s.myOpen == null) Repo.start(s.me!!.id, holiday = false) }
+        widgetAction(context, glanceId, ShiftAction.Start)
 }
 
 class PauseToggleAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) =
-        widgetAction(context, glanceId) { s ->
-            val open = s.myOpen ?: return@widgetAction
-            if (Calc.isPaused(open)) Repo.resume(open.id) else Repo.pause(open.id)
-        }
+        widgetAction(context, glanceId, ShiftAction.PauseToggle)
 }
 
 class StopAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) =
-        widgetAction(context, glanceId) { s ->
-            val open = s.myOpen ?: return@widgetAction
-            Repo.stop(open, Calc.currentRate(s.me, s.settings))
-        }
+        widgetAction(context, glanceId, ShiftAction.Stop)
 }
