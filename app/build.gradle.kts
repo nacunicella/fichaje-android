@@ -23,15 +23,32 @@ android {
         applicationId = "com.cunicella.fichaje"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // En CI, cada compilación tiene su número: así la app sabe si hay una versión nueva
+        val build = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "0.1.$build"
         buildConfigField("String", "SUPABASE_URL", "\"${config("SUPABASE_URL")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${config("SUPABASE_ANON_KEY")}\"")
+    }
+
+    // Firma fija para que las actualizaciones se instalen encima. La clave viene de los
+    // secrets de GitHub; sin ella (compilación local) se firma con la clave de debug.
+    val storeFile = System.getenv("SIGNING_STORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
+    signingConfigs {
+        if (storeFile != null) {
+            create("release") {
+                this.storeFile = storeFile
+                storePassword = System.getenv("SIGNING_PASSWORD")
+                keyAlias = "fichaje"
+                keyPassword = System.getenv("SIGNING_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -62,5 +79,6 @@ dependencies {
     implementation(libs.supabase.postgrest)
     implementation(libs.ktor.client.android)
     implementation(libs.kotlinx.datetime)
+    implementation(libs.kotlinx.serialization.json)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

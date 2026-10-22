@@ -4,6 +4,8 @@ import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 
@@ -71,6 +73,31 @@ object Repo {
         return true
     }
 
+    /** Guarda lo que se cambió en el editor de jornada: entrada, salida y pausas. */
+    suspend fun saveEdit(shift: Shift, d: ShiftDraft, rate: Double) {
+        db.from("shifts").update({
+            set("start_at", d.start.toString())
+            set("end_at", d.end?.toString())
+            set<Double?>("hours", null)
+            if (d.end != null && shift.rate == null) set("rate", rate)
+        }) { filter { eq("id", shift.id) } }
+        val keep = d.pauses.mapNotNull { it.id }.toSet()
+        shift.pauses.filter { it.id !in keep }.forEach { p ->
+            db.from("pauses").delete { filter { eq("id", p.id) } }
+        }
+        d.pauses.forEach { p ->
+            val old = shift.pauses.firstOrNull { it.id == p.id }
+            when {
+                p.id == null -> db.from("pauses").insert(NewPause(shift.id, p.start, p.end))
+                old != null && (old.startAt != p.start || old.endAt != p.end) ->
+                    db.from("pauses").update({
+                        set("start_at", p.start.toString())
+                        set("end_at", p.end?.toString())
+                    }) { filter { eq("id", p.id) } }
+            }
+        }
+    }
+
     private suspend fun closePauses(shiftId: String, at: Instant) {
         db.from("pauses").update({ set("end_at", at.toString()) }) {
             filter {
@@ -92,15 +119,50 @@ data class Snapshot(
     val myOpen: Shift? get() = openAll.firstOrNull { it.memberId == me?.id }
 
     companion object {
-        suspend fun load(): Snapshot {
-            val me = Repo.me()
-            val settings = Repo.settings()
-            val members = Repo.activeMembers()
-            val open = Repo.openShifts()
+        suspend fun load(): Snapshot = coroutineScope {
+            // todo en paralelo: es lo que más se nota en la velocidad
+            val meQ = async { Repo.me() }
+            val settingsQ = async { Repo.settings() }
+            val membersQ = async { Repo.activeMembers() }
+            val openQ = async { Repo.openShifts() }
+            val me = meQ.await()
             val today = if (me == null) emptyList() else Repo.shiftsSince(me.id, Calc.startOfToday())
+            val settings = settingsQ.await()
+            val members = membersQ.await()
+            val open = openQ.await()
             // una jornada abierta desde ayer también cuenta como "hoy"
             val mine = (today + open.filter { it.memberId == me?.id }).distinctBy { it.id }
-            return Snapshot(me, settings, members, mine, open)
+            Snapshot(me, settings, members, mine, open)
         }
+    }
+}
+
+/** Lo que se está editando de una jornada. Pausas sin id = nuevas. */
+data class PauseDraft(val id: String?, val start: Instant, val end: Instant?)
+
+data class ShiftDraft(val start: Instant, val end: Instant?, val pauses: List<PauseDraft>) {
+    /** Mismas reglas que el prototipo. Devuelve el error a mostrar, o null si está bien. */
+    fun problem(open: Boolean, now: Instant): String? {
+        if (end == null && !open) return "Falta la hora de salida."
+        if (end != null && end <= start) return "La salida tiene que ser después de la entrada."
+        if (start > now || (end != null && end > now)) return "No se puede cargar un horario en el futuro."
+        val lim = end ?: now
+        pauses.forEachIndexed { i, p ->
+            if (p.end == null && end != null) return "La pausa ${i + 1} necesita hora de fin."
+            if (p.start < start || (p.end ?: lim) > lim) return "La pausa ${i + 1} tiene que estar entre la entrada y la salida."
+            if (p.end != null && p.end <= p.start) return "La pausa ${i + 1} tiene que terminar después de empezar."
+        }
+        val sorted = pauses.sortedBy { it.start }
+        for (i in 1 until sorted.size) if (sorted[i].start < (sorted[i - 1].end ?: lim)) return "Hay pausas que se superponen."
+        return null
+    }
+
+    fun asShift(base: Shift): Shift = base.copy(
+        startAt = start, endAt = end, hours = null,
+        pauses = pauses.map { Pause(it.id ?: "", base.id, it.start, it.end) },
+    )
+
+    companion object {
+        fun of(s: Shift) = ShiftDraft(s.startAt, s.endAt, s.pauses.sortedBy { it.startAt }.map { PauseDraft(it.id, it.startAt, it.endAt) })
     }
 }

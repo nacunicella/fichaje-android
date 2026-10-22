@@ -64,4 +64,5 @@ data class NewShift(
 data class NewPause(
     @SerialName("shift_id") val shiftId: String,
     @SerialName("start_at") val startAt: Instant,
+    @SerialName("end_at") val endAt: Instant? = null,
 )

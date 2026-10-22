@@ -2,6 +2,7 @@ package com.cunicella.fichaje.ui
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cunicella.fichaje.data.Supa
+import com.cunicella.fichaje.update.Updates
 import com.cunicella.fichaje.widget.ClockWidget
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.status.SessionStatus
@@ -48,7 +51,10 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         setContent { FichajeTheme { Root() } }
     }
 }
@@ -56,11 +62,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Root() {
     val status by Supa.client.auth.sessionStatus.collectAsStateWithLifecycle()
+    var update by remember { mutableStateOf<Updates.Available?>(null) }
+    LaunchedEffect(Unit) { update = Updates.check() }
     when (status) {
-        is SessionStatus.Authenticated, is SessionStatus.RefreshFailure -> Main()
+        is SessionStatus.Authenticated, is SessionStatus.RefreshFailure -> Main(onUpdateFound = { update = it })
         is SessionStatus.NotAuthenticated -> LoginScreen()
         else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
     }
+    update?.let { UpdateDialog(it, onDismiss = { update = null }) }
 }
 
 private enum class Tab(val label: String, val icon: ImageVector) {
@@ -72,23 +81,27 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun Main() {
+private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
     var tab by rememberSaveable { mutableStateOf(Tab.Hoy) }
     val hoy: HoyViewModel = viewModel()
     val ui by hoy.ui.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    var accountOpen by rememberSaveable { mutableStateOf(false) }
+    val signOut: () -> Unit = {
+        accountOpen = false
+        scope.launch {
+            Supa.client.auth.signOut()
+            ClockWidget.refreshAll(context)
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(ui.snap?.settings?.company ?: "Fichaje", fontWeight = FontWeight.ExtraBold) },
                 actions = {
-                    IconButton(onClick = {
-                        scope.launch {
-                            Supa.client.auth.signOut()
-                            ClockWidget.refreshAll(context)
-                        }
-                    }) { Icon(Icons.Filled.ExitToApp, contentDescription = "Cerrar sesión") }
+                    IconButton(onClick = { accountOpen = true }) { Avatar(ui.snap?.me?.initials ?: "?") }
+                    IconButton(onClick = signOut) { Icon(Icons.Filled.ExitToApp, contentDescription = "Cerrar sesión") }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
@@ -113,6 +126,16 @@ private fun Main() {
                 else -> ComingSoon(tab.label)
             }
         }
+    }
+    if (accountOpen) {
+        AccountSheet(
+            me = ui.snap?.me,
+            email = Supa.client.auth.currentUserOrNull()?.email,
+            settings = ui.snap?.settings,
+            onUpdateFound = { accountOpen = false; onUpdateFound(it) },
+            onSignOut = signOut,
+            onDismiss = { accountOpen = false },
+        )
     }
 }
 

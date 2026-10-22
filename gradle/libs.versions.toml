@@ -9,6 +9,7 @@ glance = "1.1.1"
 supabase = "3.0.3"
 ktor = "3.0.3"
 datetime = "0.6.1"
+serializationJson = "1.7.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -26,6 +27,7 @@ supabase-auth = { group = "io.github.jan-tennert.supabase", name = "auth-kt" }
 supabase-postgrest = { group = "io.github.jan-tennert.supabase", name = "postgrest-kt" }
 ktor-client-android = { group = "io.ktor", name = "ktor-client-android", version.ref = "ktor" }
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "datetime" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
