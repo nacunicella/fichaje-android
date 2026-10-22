@@ -69,7 +69,8 @@ fun UpdateDialog(available: Updates.Available, onDismiss: () -> Unit) {
                         modifier = Modifier.fillMaxWidth().height(6.dp),
                         drawStopIndicator = {},
                     )
-                    Text("Descargando… ${(it * 100).toInt()}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val label = if (it >= 1f) "Abriendo el instalador…" else "Descargando… ${(it * 100).toInt()}%"
+                    Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
