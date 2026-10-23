@@ -9,6 +9,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
+import android.view.View
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -47,6 +50,30 @@ internal object ShiftNotification {
         val elapsed = s.workedMs + (System.currentTimeMillis() - s.atMs).coerceAtLeast(0)
         val money = s.sub.substringAfterLast("· ")
         val since = s.sub.substringBefore(" ·")
+        // Diseño propio para que los botones se vean sin expandir la notificación.
+        val views = RemoteViews(context.packageName, R.layout.notif_shift).apply {
+            setTextViewText(R.id.title, if (s.paused) "En pausa" else "En turno")
+            setTextViewText(R.id.sub, "$since · $money")
+            if (s.paused) {
+                setViewVisibility(R.id.chrono, View.GONE)
+                setViewVisibility(R.id.fixed, View.VISIBLE)
+                setTextViewText(R.id.fixed, Calc.dur(elapsed))
+                setImageViewResource(R.id.btnPause, R.drawable.w_play)
+                setInt(R.id.btnPause, "setBackgroundResource", R.drawable.bg_circle_green)
+                setContentDescription(R.id.btnPause, "Reanudar")
+            } else {
+                setViewVisibility(R.id.chrono, View.VISIBLE)
+                setViewVisibility(R.id.fixed, View.GONE)
+                setChronometer(R.id.chrono, SystemClock.elapsedRealtime() - elapsed, null, true)
+                setImageViewResource(R.id.btnPause, R.drawable.w_pause)
+                setInt(R.id.btnPause, "setBackgroundResource", R.drawable.bg_circle_amber)
+                setContentDescription(R.id.btnPause, "Pausar")
+            }
+            setInt(R.id.btnPause, "setColorFilter", 0xFF0D1219.toInt())
+            setInt(R.id.btnStop, "setColorFilter", 0xFFF07A7A.toInt())
+            setOnClickPendingIntent(R.id.btnPause, action(context, ShiftAction.PauseToggle))
+            setOnClickPendingIntent(R.id.btnStop, action(context, ShiftAction.Stop))
+        }
         val b = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_clock)
             .setColor(if (s.paused) 0xFFF2A54E.toInt() else 0xFF4FCB98.toInt())
@@ -58,20 +85,15 @@ internal object ShiftNotification {
             .setContentIntent(open(context))
             // Android 14+ deja deslizar las notificaciones fijas: si la sacan, vuelve.
             .setDeleteIntent(broadcast(context, REPOST, 9))
-        if (s.paused) {
-            b.setContentTitle("En pausa · ${Calc.dur(elapsed)}")
-                .setContentText("$since · $money")
-                .setShowWhen(false)
-                .addAction(0, "Reanudar", action(context, ShiftAction.PauseToggle))
-        } else {
-            b.setContentTitle("En turno")
-                .setContentText("$since · $money")
-                .setWhen(System.currentTimeMillis() - elapsed)
-                .setShowWhen(true)
-                .setUsesChronometer(true)
-                .addAction(0, "Pausar", action(context, ShiftAction.PauseToggle))
-        }
-        b.addAction(0, "Terminar", action(context, ShiftAction.Stop))
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(views)
+            .setCustomBigContentView(views)
+            // por si algún fabricante ignora la vista propia: título y acciones clásicas
+            .setContentTitle(if (s.paused) "En pausa · ${Calc.dur(elapsed)}" else "En turno")
+            .setContentText("$since · $money")
+            .setShowWhen(false)
+            .addAction(0, if (s.paused) "Reanudar" else "Pausar", action(context, ShiftAction.PauseToggle))
+            .addAction(0, "Terminar", action(context, ShiftAction.Stop))
         runCatching { nm.notify(ID, b.build()) }
     }
 
