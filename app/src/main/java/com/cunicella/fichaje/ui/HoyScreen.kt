@@ -56,6 +56,7 @@ import com.cunicella.fichaje.data.Repo
 import com.cunicella.fichaje.data.Shift
 import com.cunicella.fichaje.data.ShiftDraft
 import com.cunicella.fichaje.data.Snapshot
+import com.cunicella.fichaje.data.Supa
 import com.cunicella.fichaje.widget.ClockWidget
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -95,7 +96,7 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
                 _ui.update { it.copy(loading = false, snap = s, error = null) }
                 ClockWidget.show(getApplication(), s)
             }
-            .onFailure { e -> _ui.update { it.copy(loading = false, error = "No se pudo cargar: ${e.message ?: "sin conexión"}") } }
+            .onFailure { e -> _ui.update { it.copy(loading = false, error = "No se pudo cargar. ${Supa.friendly(e)}") } }
     }
 
     /**
@@ -107,13 +108,16 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
         if (_ui.value.busy) return
         _ui.update { it.copy(busy = true, toast = done, error = null, snap = optimistic(snap)) }
         viewModelScope.launch {
-            val result = runCatching { block(snap) }
+            val result = runCatching {
+                if (!Supa.ensureSession()) throw Supa.NoSession()
+                block(snap)
+            }
             val fresh = runCatching { Snapshot.load() }.getOrNull()
             _ui.update {
                 it.copy(
                     busy = false,
                     snap = fresh ?: if (result.isFailure) snap else it.snap,
-                    error = result.exceptionOrNull()?.let { e -> "No se pudo guardar: ${e.message ?: "sin conexión"}" },
+                    error = result.exceptionOrNull()?.let { e -> "No se pudo guardar. ${Supa.friendly(e)}" },
                     toast = result.getOrNull() ?: it.toast,
                 )
             }
