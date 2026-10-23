@@ -59,6 +59,7 @@ import com.cunicella.fichaje.data.Snapshot
 import com.cunicella.fichaje.data.Supa
 import com.cunicella.fichaje.ui.MainActivity
 import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 
 /**
  * Lo que muestra el widget. Se guarda en el estado del widget (no en la composición)
@@ -74,6 +75,7 @@ internal data class WidgetState(
     val canAct: Boolean = false,
     val busy: Boolean = false,
     val message: String? = null,
+    val shiftId: String? = null,
 ) {
     val running get() = open && !paused
 
@@ -81,6 +83,7 @@ internal data class WidgetState(
         p[K.status] = status; p[K.sub] = sub; p[K.worked] = workedMs; p[K.at] = atMs
         p[K.open] = open; p[K.paused] = paused; p[K.canAct] = canAct; p[K.busy] = busy
         if (message != null) p[K.message] = message else p.remove(K.message)
+        if (shiftId != null) p[K.shiftId] = shiftId else p.remove(K.shiftId)
     }
 
     companion object {
@@ -88,7 +91,7 @@ internal data class WidgetState(
             WidgetState(
                 status = it, sub = p[K.sub] ?: "", workedMs = p[K.worked] ?: 0, atMs = p[K.at] ?: 0,
                 open = p[K.open] ?: false, paused = p[K.paused] ?: false, canAct = p[K.canAct] ?: false,
-                busy = p[K.busy] ?: false, message = p[K.message],
+                busy = p[K.busy] ?: false, message = p[K.message], shiftId = p[K.shiftId],
             )
         }
 
@@ -98,7 +101,7 @@ internal data class WidgetState(
             val open = snap.myOpen
             val stats = DayStats.of(snap.mineToday, me, snap.settings, now)
             val money = Calc.money(stats.earned, snap.settings.currency)
-            val base = WidgetState("", "", workedMs = stats.worked, atMs = now.toEpochMilliseconds(), canAct = true)
+            val base = WidgetState("", "", workedMs = stats.worked, atMs = now.toEpochMilliseconds(), canAct = true, shiftId = open?.id)
             return when {
                 open == null -> base.copy(status = "Fuera de turno", sub = "Hoy · $money")
                 Calc.isPaused(open) -> base.copy(status = "En pausa", sub = "Desde las ${Calc.hm(open.startAt)} · $money", open = true, paused = true)
@@ -123,6 +126,7 @@ private object K {
     val paused = booleanPreferencesKey("paused")
     val canAct = booleanPreferencesKey("canAct")
     val busy = booleanPreferencesKey("busy")
+    val shiftId = stringPreferencesKey("shiftId")
 }
 
 private val Bg = Color(0xFF151C26)
@@ -141,6 +145,7 @@ class ClockWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         // Android pide un update (al agregarlo o cada 30 min): traemos datos frescos.
         val fresh = WidgetState.load()
+        lastState = fresh
         updateAppWidgetState(context, id) { fresh.write(it) }
         provideContent {
             val s = WidgetState.read(currentState<Preferences>()) ?: fresh
@@ -228,13 +233,17 @@ class ClockWidget : GlanceAppWidget() {
     }
 
     companion object {
+        /** Último estado mostrado: con él los botones responden al instante, antes de ir al servidor. */
+        @Volatile internal var lastState: WidgetState? = null
+
         /** La app ya tiene el snapshot: lo mostramos sin volver a pedirlo. */
         suspend fun show(context: Context, snap: Snapshot) = push(context, WidgetState.of(snap))
 
         /** Recarga desde el servidor (p. ej. al cerrar sesión). */
         suspend fun refreshAll(context: Context) = push(context, WidgetState.load())
 
-        private suspend fun push(context: Context, s: WidgetState) {
+        internal suspend fun push(context: Context, s: WidgetState) {
+            lastState = s
             ShiftNotification.update(context, s)
             runCatching {
                 val ids = GlanceAppWidgetManager(context).getGlanceIds(ClockWidget::class.java)
@@ -262,17 +271,40 @@ class ClockWidgetReceiver : GlanceAppWidgetReceiver() {
 internal enum class ShiftAction { Start, PauseToggle, Stop }
 
 internal suspend fun runShiftAction(context: Context, action: ShiftAction) {
+    val before = ClockWidget.lastState
+    val now = System.currentTimeMillis()
+    // Primero mostramos el resultado esperado (widget y notificación responden al toque),
+    // después lo guardamos y recargamos lo real.
+    val guess = before?.takeIf { it.canAct && it.message == null }?.let { s ->
+        val hm = Calc.hm(Instant.fromEpochMilliseconds(now))
+        val money = s.sub.substringAfterLast("· ")
+        val elapsed = if (s.running) s.workedMs + (now - s.atMs).coerceAtLeast(0) else s.workedMs
+        when (action) {
+            ShiftAction.Start -> if (!s.open) s.copy(open = true, paused = false, status = "En turno", sub = "Desde las $hm · $money", atMs = now) else null
+            ShiftAction.PauseToggle -> if (!s.open) null
+            else if (s.running) s.copy(paused = true, status = "En pausa", workedMs = elapsed, atMs = now)
+            else s.copy(paused = false, status = "En turno", atMs = now)
+            ShiftAction.Stop -> if (s.open) s.copy(open = false, paused = false, status = "Fuera de turno", sub = "Hoy · $money", workedMs = elapsed, atMs = now, shiftId = null) else null
+        }
+    }
+    if (guess != null) ClockWidget.push(context, guess)
     runCatching {
-        if (Supa.awaitSession()) {
-            val s = Snapshot.load()
-            val me = s.me
-            val open = s.myOpen
-            if (me != null) when (action) {
-                ShiftAction.Start -> if (open == null) Repo.start(me.id, holiday = false)
-                ShiftAction.PauseToggle -> if (open != null) {
-                    if (Calc.isPaused(open)) Repo.resume(open.id) else Repo.pause(open.id)
+        if (Supa.ensureSession()) {
+            val id = before?.shiftId
+            if (action == ShiftAction.PauseToggle && id != null && before.open) {
+                // un solo pedido: no hace falta recargar todo para pausar
+                if (before.paused) Repo.resume(id) else Repo.pause(id)
+            } else {
+                val s = Snapshot.load()
+                val me = s.me
+                val open = s.myOpen
+                if (me != null) when (action) {
+                    ShiftAction.Start -> if (open == null) Repo.start(me.id, holiday = false)
+                    ShiftAction.PauseToggle -> if (open != null) {
+                        if (Calc.isPaused(open)) Repo.resume(open.id) else Repo.pause(open.id)
+                    }
+                    ShiftAction.Stop -> if (open != null) Repo.stop(open, Calc.currentRate(me, s.settings))
                 }
-                ShiftAction.Stop -> if (open != null) Repo.stop(open, Calc.currentRate(me, s.settings))
             }
         }
     }
@@ -280,7 +312,7 @@ internal suspend fun runShiftAction(context: Context, action: ShiftAction) {
 }
 
 private suspend fun widgetAction(context: Context, id: GlanceId, action: ShiftAction) {
-    ClockWidget.markBusy(context, id)
+    if (ClockWidget.lastState == null) ClockWidget.markBusy(context, id)
     runShiftAction(context, action)
 }
 
