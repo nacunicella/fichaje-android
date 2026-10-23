@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -102,7 +104,7 @@ fun ShiftEditorSheet(
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).navigationBarsPadding().padding(bottom = 12.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).navigationBarsPadding().padding(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("Editar jornada", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
