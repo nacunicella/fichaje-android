@@ -26,13 +26,19 @@ import kotlinx.coroutines.launch
 internal object ShiftNotification {
     private const val CHANNEL = "jornada"
     private const val ID = 1
+    const val REPOST = "Repost"
+
+    /** Último estado mostrado, para volver a ponerla si la deslizan. */
+    @Volatile private var last: WidgetState? = null
 
     fun update(context: Context, s: WidgetState) {
         val nm = NotificationManagerCompat.from(context)
         if (!s.open || s.message != null) {
+            last = null
             nm.cancel(ID)
             return
         }
+        last = s
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -50,6 +56,8 @@ internal object ShiftNotification {
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(open(context))
+            // Android 14+ deja deslizar las notificaciones fijas: si la sacan, vuelve.
+            .setDeleteIntent(broadcast(context, REPOST, 9))
         if (s.paused) {
             b.setContentTitle("En pausa · ${Calc.dur(elapsed)}")
                 .setContentText("$since · $money")
@@ -85,21 +93,33 @@ internal object ShiftNotification {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    private fun action(context: Context, a: ShiftAction) = PendingIntent.getBroadcast(
-        context, a.ordinal + 1,
-        Intent(context, ShiftActionReceiver::class.java).setAction(a.name),
+    private fun action(context: Context, a: ShiftAction) = broadcast(context, a.name, a.ordinal + 1)
+
+    private fun broadcast(context: Context, name: String, code: Int) = PendingIntent.getBroadcast(
+        context, code,
+        Intent(context, ShiftActionReceiver::class.java).setAction(name),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
+
+    /** La deslizaron estando en turno: se vuelve a mostrar (con datos frescos si no hay estado en memoria). */
+    suspend fun repost(context: Context) {
+        val s = last
+        if (s != null) update(context, s) else ClockWidget.refreshAll(context)
+    }
 }
 
 /** Recibe los botones de la notificación. */
 class ShiftActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val a = ShiftAction.entries.firstOrNull { it.name == intent.action } ?: return
+        val name = intent.action
+        val a = ShiftAction.entries.firstOrNull { it.name == name }
+        if (a == null && name != ShiftNotification.REPOST) return
         val pending = goAsync()
         val app = context.applicationContext
         CoroutineScope(Dispatchers.IO).launch {
-            try { runShiftAction(app, a) } finally { pending.finish() }
+            try {
+                if (a != null) runShiftAction(app, a) else ShiftNotification.repost(app)
+            } finally { pending.finish() }
         }
     }
 }
