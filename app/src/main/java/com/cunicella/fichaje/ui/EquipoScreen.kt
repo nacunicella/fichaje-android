@@ -74,23 +74,20 @@ fun EquipoScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
     val cur = store.settings.currency
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Equipo", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-            Spacer(Modifier.weight(1f))
-            Segmented(periods, period, { it.label }, Modifier.width(230.dp)) { period = it }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Segmented(periods, period, { it.label }, Modifier.weight(1f)) { period = it }
+            if (store.isAdmin) AddButton("Agregar integrante") { editing = "" }
         }
-        StatusLine(ui.error, ui.toast)
+        StatusLine(ui.error, null)
         TotalCard(
             "Costo del equipo · ${period.label.lowercase()}",
             Calc.money(inP.sumOf { Calc.earned(it, store.member(it.memberId), store.settings, now) }, cur),
             "${Calc.dur(inP.sumOf { Calc.workMs(it, now) })} trabajadas · ${inP.size} jornada${if (inP.size == 1) "" else "s"} · $onNow fichado${if (onNow == 1) "" else "s"} ahora",
         )
-        SectionTitle("Integrantes", store.active.size.toString()) {
-            if (store.isAdmin) TextButton(onClick = { editing = "" }) { Text("Agregar") }
-        }
+        SectionTitle("Integrantes", store.active.size.toString())
         MemberList(store.active, store, inP, now) { editing = it }
         val inactive = store.members.filter { !it.active }
         if (inactive.isNotEmpty()) {

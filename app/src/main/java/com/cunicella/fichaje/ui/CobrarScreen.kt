@@ -51,11 +51,10 @@ fun CobrarScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
     val m = store.member(selected)
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("Cobrar", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-        StatusLine(ui.error, ui.toast)
+        StatusLine(ui.error, null)
         if (m == null) {
             EmptyCard("No hay integrantes.")
             return@Column

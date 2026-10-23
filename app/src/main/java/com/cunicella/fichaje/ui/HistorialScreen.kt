@@ -70,18 +70,14 @@ fun HistorialScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
     LaunchedEffect(view) { if (view == HiView.Movimientos && ui.audit.isEmpty()) vm.loadAudit(reset = true) }
 
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Historial", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp)
-            Spacer(Modifier.weight(1f))
-            Button(onClick = { adding = true }, shape = RoundedCornerShape(10.dp), contentPadding = ButtonDefaults.ButtonWithIconContentPadding) {
-                Text("Agregar jornada", maxLines = 1, fontWeight = FontWeight.SemiBold)
-            }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Segmented(HiView.entries, view, { it.label }, Modifier.weight(1f)) { view = it }
+            AddButton("Agregar jornada") { adding = true }
         }
-        StatusLine(ui.error, ui.toast)
-        Segmented(HiView.entries, view, { it.label }) { view = it }
+        StatusLine(ui.error, null)
         val pickable = store.members.sortedWith(compareByDescending<com.cunicella.fichaje.data.Member> { it.active }.thenBy { it.firstName })
         PersonPicker(pickable, person, store.me?.id, allLabel = "Todo el equipo") { person = it }
 
