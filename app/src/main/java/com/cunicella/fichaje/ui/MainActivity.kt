@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,12 +92,18 @@ private enum class Tab(val label: String, val icon: ImageVector) {
 private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
     var tab by rememberSaveable { mutableStateOf(Tab.Hoy) }
     val hoy: HoyViewModel = viewModel()
+    val data: DataViewModel = viewModel()
     val ui by hoy.ui.collectAsStateWithLifecycle()
+    val dataUi by data.ui.collectAsStateWithLifecycle()
     // al volver a la app (p. ej. después de fichar desde el widget) se recarga
     LifecycleResumeEffect(Unit) {
         hoy.refresh()
+        data.refresh(quiet = true)
         onPauseOrDispose { }
     }
+    var configOpen by rememberSaveable { mutableStateOf(false) }
+    var profileOpen by rememberSaveable { mutableStateOf(false) }
+    val isAdmin = ui.snap?.me?.isAdmin == true
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     // permiso para la notificación de jornada en curso (Android 13+)
@@ -122,6 +129,7 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
             TopAppBar(
                 title = { Text(ui.snap?.settings?.company ?: "Fichaje", fontWeight = FontWeight.ExtraBold) },
                 actions = {
+                    if (isAdmin) IconButton(onClick = { configOpen = true }) { Icon(Icons.Filled.Settings, contentDescription = "Configuración") }
                     IconButton(onClick = { accountOpen = true }) { Avatar(ui.snap?.me?.initials ?: "?") }
                     IconButton(onClick = signOut) { Icon(Icons.Filled.ExitToApp, contentDescription = "Cerrar sesión") }
                 },
@@ -145,7 +153,9 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
         Box(Modifier.padding(pad)) {
             when (tab) {
                 Tab.Hoy -> HoyScreen(hoy)
-                else -> ComingSoon(tab.label)
+                Tab.Equipo -> EquipoScreen(data)
+                Tab.Historial -> HistorialScreen(data)
+                Tab.Cobrar -> CobrarScreen(data)
             }
         }
     }
@@ -157,14 +167,11 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
             onUpdateFound = { accountOpen = false; onUpdateFound(it) },
             onSignOut = signOut,
             onDismiss = { accountOpen = false },
+            onEditProfile = if (dataUi.store?.me != null) ({ accountOpen = false; profileOpen = true }) else null,
+            onSettings = if (isAdmin) ({ accountOpen = false; configOpen = true }) else null,
         )
     }
-}
-
-@Composable
-private fun ComingSoon(name: String) {
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text("Llega en la próxima versión.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+    val store = dataUi.store
+    if (configOpen && store != null) ConfigSheet(store.settings, data, onDismiss = { configOpen = false })
+    if (profileOpen && store != null) MemberSheet(store.me, store, data, onDismiss = { profileOpen = false })
 }

@@ -59,6 +59,8 @@ fun AccountSheet(
     onUpdateFound: (Updates.Available) -> Unit,
     onSignOut: () -> Unit,
     onDismiss: () -> Unit,
+    onEditProfile: (() -> Unit)? = null,
+    onSettings: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
@@ -93,6 +95,12 @@ fun AccountSheet(
                 InfoRow("Empresa", settings.company)
             }
             InfoRow("Versión de la app", Updates.currentName)
+            if (onEditProfile != null || onSettings != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (onEditProfile != null) OutlinedButton(onClick = onEditProfile, modifier = Modifier.weight(1f).height(44.dp), shape = RoundedCornerShape(12.dp)) { Text("Mi perfil", maxLines = 1) }
+                    if (onSettings != null) OutlinedButton(onClick = onSettings, modifier = Modifier.weight(1f).height(44.dp), shape = RoundedCornerShape(12.dp)) { Text("Configuración", maxLines = 1) }
+                }
+            }
             updateMsg?.let { Text(it, color = muted, fontSize = 13.sp) }
             OutlinedButton(
                 onClick = {

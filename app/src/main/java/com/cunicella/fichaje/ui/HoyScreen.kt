@@ -30,7 +30,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -88,7 +87,10 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(HoyUi())
     val ui: StateFlow<HoyUi> = _ui
 
-    init { refresh() }
+    init {
+        refresh()
+        viewModelScope.launch { Sync.changes.collect { if (it !== this@HoyViewModel) refresh() } }
+    }
 
     fun refresh() = viewModelScope.launch {
         runCatching { Snapshot.load() }
@@ -122,6 +124,7 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             if (fresh != null) ClockWidget.show(getApplication(), fresh)
+            if (result.isSuccess) Sync.changed(this@HoyViewModel)
         }
     }
 
@@ -356,31 +359,3 @@ private fun Fact(label: String, value: String, modifier: Modifier = Modifier, on
         Text(value, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
     }
 }
-
-@Composable
-private fun Seg(text: String, selected: Boolean, modifier: Modifier, selBg: Color, selFg: Color, onClick: () -> Unit) {
-    Box(
-        modifier.clip(RoundedCornerShape(9.dp)).background(if (selected) selBg else Color.Transparent)
-            .clickable(onClick = onClick).padding(vertical = 9.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text, maxLines = 1, fontSize = 14.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            color = if (selected) selFg else LocalStateColors.current.muted,
-        )
-    }
-}
-
-@Composable
-private fun Pill(text: String, fg: Color, bg: Color) {
-    Row(
-        Modifier.clip(RoundedCornerShape(50)).background(bg).padding(horizontal = 10.dp, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(7.dp).clip(CircleShape).background(fg))
-        Spacer(Modifier.width(6.dp))
-        Text(text, color = fg, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-private fun trimNum(d: Double): String = if (d % 1.0 == 0.0) d.toInt().toString() else d.toString()
