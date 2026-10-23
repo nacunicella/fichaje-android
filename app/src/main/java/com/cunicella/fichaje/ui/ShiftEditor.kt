@@ -92,6 +92,8 @@ fun ShiftEditorSheet(
     onDismiss: () -> Unit,
 ) {
     var d by remember(shift.id) { mutableStateOf(ShiftDraft.of(shift)) }
+    // Pausas quitadas en este editor, con su posición, para poder deshacer antes de guardar.
+    var removed by remember(shift.id) { mutableStateOf<List<Pair<Int, PauseDraft>>>(emptyList()) }
     var picking by remember { mutableStateOf<Target?>(null) }
     val open = Calc.isOpen(shift)
     val now = Clock.System.now()
@@ -115,9 +117,25 @@ fun ShiftEditorSheet(
                     TimeChip(p.start) { picking = Target.PauseStart(i) }
                     Text("–", color = sc.muted)
                     TimeChip(p.end) { picking = Target.PauseEnd(i) }
-                    IconButton(onClick = { d = d.copy(pauses = d.pauses.filterIndexed { j, _ -> j != i }) }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = {
+                        removed = removed + (i to p)
+                        d = d.copy(pauses = d.pauses.filterIndexed { j, _ -> j != i })
+                    }, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.Filled.Close, contentDescription = "Quitar pausa ${i + 1}", tint = sc.muted, modifier = Modifier.size(18.dp))
                     }
+                }
+            }
+            removed.lastOrNull()?.let { (at, p) ->
+                Line(sc.warnBg, "") {
+                    Text(
+                        "Pausa ${Calc.hm(p.start)}–${p.end?.let { Calc.hm(it) } ?: "…"} quitada" + if (removed.size > 1) " (${removed.size})" else "",
+                        color = sc.muted, fontSize = 13.sp,
+                    )
+                    TextButton(onClick = {
+                        removed = removed.dropLast(1)
+                        val idx = at.coerceIn(0, d.pauses.size)
+                        d = d.copy(pauses = d.pauses.toMutableList().apply { add(idx, p) })
+                    }) { Text("Deshacer", fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
                 }
             }
             Line(Color.Transparent, "") {
