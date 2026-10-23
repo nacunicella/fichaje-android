@@ -58,8 +58,11 @@ import com.cunicella.fichaje.data.Repo
 import com.cunicella.fichaje.data.Snapshot
 import com.cunicella.fichaje.data.Supa
 import com.cunicella.fichaje.ui.MainActivity
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Lo que muestra el widget. Se guarda en el estado del widget (no en la composición)
@@ -143,10 +146,16 @@ class ClockWidget : GlanceAppWidget() {
     override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        // Android pide un update (al agregarlo o cada 30 min): traemos datos frescos.
-        val fresh = WidgetState.load()
-        lastState = fresh
-        updateAppWidgetState(context, id) { fresh.write(it) }
+        // Si la app o un toque acaban de dejar el estado, lo usamos tal cual (sin ir al servidor,
+        // que es lento y pisaría el cambio recién hecho). Si no, Android pidió un update
+        // (al agregarlo o cada 30 min) y traemos datos frescos.
+        val recent = lastState?.takeIf { System.currentTimeMillis() - lastStateAt < 2 * 60_000 || pendingActions.get() > 0 }
+        val fresh = recent ?: WidgetState.load().also {
+            if (pendingActions.get() == 0) {
+                lastState = it
+                updateAppWidgetState(context, id) { p -> it.write(p) }
+            }
+        }
         provideContent {
             val s = WidgetState.read(currentState<Preferences>()) ?: fresh
             Content(context, s)
@@ -235,6 +244,8 @@ class ClockWidget : GlanceAppWidget() {
     companion object {
         /** Último estado mostrado: con él los botones responden al instante, antes de ir al servidor. */
         @Volatile internal var lastState: WidgetState? = null
+            set(v) { field = v; lastStateAt = System.currentTimeMillis() }
+        @Volatile internal var lastStateAt = 0L
 
         /** La app ya tiene el snapshot: lo mostramos sin volver a pedirlo. */
         suspend fun show(context: Context, snap: Snapshot) = push(context, WidgetState.of(snap))
@@ -270,45 +281,56 @@ class ClockWidgetReceiver : GlanceAppWidgetReceiver() {
 /** Acciones de jornada compartidas por el widget y la notificación. */
 internal enum class ShiftAction { Start, PauseToggle, Stop }
 
+/** Los toques se aplican en orden, uno por vez: dos toques seguidos no se pisan. */
+private val actionLock = Mutex()
+internal val pendingActions = AtomicInteger(0)
+
 internal suspend fun runShiftAction(context: Context, action: ShiftAction) {
-    val before = ClockWidget.lastState
-    val now = System.currentTimeMillis()
-    // Primero mostramos el resultado esperado (widget y notificación responden al toque),
-    // después lo guardamos y recargamos lo real.
-    val guess = before?.takeIf { it.canAct && it.message == null }?.let { s ->
-        val hm = Calc.hm(Instant.fromEpochMilliseconds(now))
-        val money = s.sub.substringAfterLast("· ")
-        val elapsed = if (s.running) s.workedMs + (now - s.atMs).coerceAtLeast(0) else s.workedMs
-        when (action) {
-            ShiftAction.Start -> if (!s.open) s.copy(open = true, paused = false, status = "En turno", sub = "Desde las $hm · $money", atMs = now) else null
-            ShiftAction.PauseToggle -> if (!s.open) null
-            else if (s.running) s.copy(paused = true, status = "En pausa", workedMs = elapsed, atMs = now)
-            else s.copy(paused = false, status = "En turno", atMs = now)
-            ShiftAction.Stop -> if (s.open) s.copy(open = false, paused = false, status = "Fuera de turno", sub = "Hoy · $money", workedMs = elapsed, atMs = now, shiftId = null) else null
-        }
-    }
-    if (guess != null) ClockWidget.push(context, guess)
-    runCatching {
-        if (Supa.ensureSession()) {
-            val id = before?.shiftId
-            if (action == ShiftAction.PauseToggle && id != null && before.open) {
-                // un solo pedido: no hace falta recargar todo para pausar
-                if (before.paused) Repo.resume(id) else Repo.pause(id)
-            } else {
-                val s = Snapshot.load()
-                val me = s.me
-                val open = s.myOpen
-                if (me != null) when (action) {
-                    ShiftAction.Start -> if (open == null) Repo.start(me.id, holiday = false)
-                    ShiftAction.PauseToggle -> if (open != null) {
-                        if (Calc.isPaused(open)) Repo.resume(open.id) else Repo.pause(open.id)
+    pendingActions.incrementAndGet()
+    try {
+        actionLock.withLock {
+            val before = ClockWidget.lastState
+            val now = System.currentTimeMillis()
+            // Primero mostramos el resultado esperado (widget y notificación responden al toque),
+            // después lo guardamos y, cuando no queda ningún toque pendiente, recargamos lo real.
+            val guess = before?.takeIf { it.canAct && it.message == null }?.let { s ->
+                val hm = Calc.hm(Instant.fromEpochMilliseconds(now))
+                val money = s.sub.substringAfterLast("· ")
+                val elapsed = if (s.running) s.workedMs + (now - s.atMs).coerceAtLeast(0) else s.workedMs
+                when (action) {
+                    ShiftAction.Start -> if (!s.open) s.copy(open = true, paused = false, status = "En turno", sub = "Desde las $hm · $money", atMs = now) else null
+                    ShiftAction.PauseToggle -> if (!s.open) null
+                    else if (s.running) s.copy(paused = true, status = "En pausa", workedMs = elapsed, atMs = now)
+                    else s.copy(paused = false, status = "En turno", atMs = now)
+                    ShiftAction.Stop -> if (s.open) s.copy(open = false, paused = false, status = "Fuera de turno", sub = "Hoy · $money", workedMs = elapsed, atMs = now, shiftId = null) else null
+                }
+            }
+            if (guess != null) ClockWidget.push(context, guess)
+            runCatching {
+                if (Supa.ensureSession()) {
+                    val id = before?.shiftId
+                    if (action == ShiftAction.PauseToggle && id != null && before.open) {
+                        // un solo pedido: no hace falta recargar todo para pausar
+                        if (before.paused) Repo.resume(id) else Repo.pause(id)
+                    } else {
+                        val s = Snapshot.load()
+                        val me = s.me
+                        val open = s.myOpen
+                        if (me != null) when (action) {
+                            ShiftAction.Start -> if (open == null) Repo.start(me.id, holiday = false)
+                            ShiftAction.PauseToggle -> if (open != null) {
+                                if (Calc.isPaused(open)) Repo.resume(open.id) else Repo.pause(open.id)
+                            }
+                            ShiftAction.Stop -> if (open != null) Repo.stop(open, Calc.currentRate(me, s.settings))
+                        }
                     }
-                    ShiftAction.Stop -> if (open != null) Repo.stop(open, Calc.currentRate(me, s.settings))
                 }
             }
         }
+    } finally {
+        // Solo el último toque de la seguidilla recarga: así lo real nunca pisa un toque posterior.
+        if (pendingActions.decrementAndGet() == 0) ClockWidget.refreshAll(context)
     }
-    ClockWidget.refreshAll(context)
 }
 
 private suspend fun widgetAction(context: Context, id: GlanceId, action: ShiftAction) {
