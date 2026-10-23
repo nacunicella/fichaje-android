@@ -114,7 +114,7 @@ object Audit {
             "payments" -> {
                 cat = AuditCat.Cobro
                 text = when (r.action) {
-                    "insert" -> "Registró un cobro de ${money(n.num("amount"), st)} (${Calc.dur((n.num("worked_seconds") ?: 0.0).toLong() * 1000)}, ${n.num("shift_count")?.toInt() ?: 0} jornadas)"
+                    "insert" -> "Registró un cobro de ${money(n.num("amount"), st)}"
                     "delete" -> "Deshizo el cobro de ${money(o.num("amount"), st)} del ${o.time("paid_at")?.let { Dates.short(it) }}"
                     else -> "Cambió un cobro"
                 }

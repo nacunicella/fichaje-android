@@ -12,7 +12,7 @@ import kotlinx.datetime.todayIn
 
 /** Reglas de negocio: horas pagas, plata y formatos. Las mismas que el prototipo. */
 object Calc {
-    private const val HOUR_MS = 3_600_000.0
+    const val HOUR_MS = 3_600_000.0
     private val tz get() = TimeZone.currentSystemDefault()
 
     fun isOpen(s: Shift) = s.endAt == null && s.hours == null
