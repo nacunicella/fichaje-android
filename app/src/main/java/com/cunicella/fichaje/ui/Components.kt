@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
@@ -79,7 +80,7 @@ internal fun Tag(text: String, fg: Color, bg: Color) {
 internal fun Seg(text: String, selected: Boolean, modifier: Modifier, selBg: Color, selFg: Color, onClick: () -> Unit) {
     Box(
         modifier.clip(RoundedCornerShape(9.dp)).background(if (selected) selBg else Color.Transparent)
-            .clickable(onClick = onClick).padding(vertical = 9.dp, horizontal = 6.dp),
+            .clickable(onClick = onClick).padding(vertical = 7.dp, horizontal = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -116,10 +117,10 @@ internal fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 internal fun TotalCard(label: String, amount: String, meta: String, extra: String? = null) {
     Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, color = LocalStateColors.current.muted, fontSize = 13.sp)
-            Text(amount, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 34.sp, letterSpacing = (-0.5).sp, maxLines = 1)
-            Text(meta, color = LocalStateColors.current.muted, fontSize = 13.sp)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, color = LocalStateColors.current.muted, fontSize = 12.5.sp)
+            Text(amount, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 28.sp, letterSpacing = (-0.5).sp, maxLines = 1)
+            Text(meta, color = LocalStateColors.current.muted, fontSize = 12.5.sp)
             extra?.let { Text(it, color = LocalStateColors.current.muted, fontSize = 12.5.sp) }
         }
     }
@@ -275,6 +276,15 @@ internal fun BigButton(text: String, modifier: Modifier = Modifier, enabled: Boo
     Button(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(12.dp)) {
         Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
+}
+
+/** Botón "+" compacto, con la acción en el contentDescription. */
+@Composable
+internal fun AddButton(description: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.primary).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(Icons.Filled.Add, contentDescription = description, tint = MaterialTheme.colorScheme.onPrimary) }
 }
 
 /** Etiqueta chica arriba de un campo. */

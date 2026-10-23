@@ -29,6 +29,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -45,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -124,10 +128,19 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
             ClockWidget.refreshAll(context)
         }
     }
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(dataUi.toast) {
+        dataUi.toast?.let { msg ->
+            data.clearToast()
+            snackbar.showSnackbar(msg, duration = SnackbarDuration.Short)
+        }
+    }
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text(ui.snap?.settings?.company ?: "Fichaje", fontWeight = FontWeight.ExtraBold) },
+                title = { Text(ui.snap?.settings?.company ?: "Fichaje", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp) },
+                expandedHeight = 52.dp,
                 actions = {
                     if (isAdmin) IconButton(onClick = { configOpen = true }) { Icon(Icons.Filled.Settings, contentDescription = "Configuración") }
                     IconButton(onClick = { accountOpen = true }) { Avatar(ui.snap?.me?.initials ?: "?") }
