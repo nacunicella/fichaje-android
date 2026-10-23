@@ -145,7 +145,6 @@ internal fun ShiftRow(s: Shift, store: Store, now: Instant, showPerson: Boolean,
                 if (open) Tag("Abierta", sc.on, sc.onBg)
                 if (s.manual) Tag("Manual", sc.muted, MaterialTheme.colorScheme.surfaceVariant)
                 if (s.holiday) Tag("Feriado", sc.warn, sc.warnBg)
-                if (s.paymentId != null) Tag("Cobrada", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer)
             }
         }
         Column(horizontalAlignment = Alignment.End) {
@@ -193,7 +192,6 @@ internal fun ShiftDetailSheet(s: Shift, store: Store, vm: DataViewModel, onDismi
     val now = rememberNow(1000)
     val m = store.member(s.memberId)
     val open = Calc.isOpen(s)
-    val pay = store.payment(s.paymentId)
     val canEdit = store.isAdmin || s.memberId == store.me?.id
     var editing by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
@@ -213,11 +211,7 @@ internal fun ShiftDetailSheet(s: Shift, store: Store, vm: DataViewModel, onDismi
                 Text(m?.name ?: "", fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Text(Dates.dayLabel(s.startAt), color = sc.muted, fontSize = 13.5.sp)
             }
-            when {
-                open -> Pill("Abierta", sc.on, sc.onBg)
-                pay != null -> Pill("Cobrada", MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer)
-                else -> Pill("Pendiente", sc.warn, sc.warnBg)
-            }
+            if (open) Pill("Abierta", sc.on, sc.onBg) else Pill("Cerrada", sc.muted, MaterialTheme.colorScheme.surfaceVariant)
         }
         Column {
             Text(Calc.money(Calc.earned(s, m, st, now), st.currency), fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 30.sp)
@@ -249,7 +243,6 @@ internal fun ShiftDetailSheet(s: Shift, store: Store, vm: DataViewModel, onDismi
         }
         Text(
             (if (s.manual) "Cargada a mano" else "Fichada en la app") +
-                (pay?.let { " · cobrada el ${Dates.short(it.paidAt)}" } ?: "") +
                 (if (open) " · se valúa a la tarifa de hoy" else "") +
                 (s.note?.takeIf { it.isNotBlank() }?.let { " · “$it”" } ?: ""),
             color = sc.muted, fontSize = 12.5.sp,
@@ -263,7 +256,6 @@ internal fun ShiftDetailSheet(s: Shift, store: Store, vm: DataViewModel, onDismi
                     if (!s.holiday) vm.run { Repo.setHoliday(s.id, true) }
                 }
             }
-            if (pay != null) Text("Ya está cobrada: si la cambiás, el cobro registrado no se modifica.", color = sc.muted, fontSize = 12.5.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { editing = true }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(12.dp)) {
                     Text("Editar jornada", maxLines = 1, fontWeight = FontWeight.SemiBold)

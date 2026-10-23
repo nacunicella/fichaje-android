@@ -160,16 +160,14 @@ object Repo {
     suspend fun deleteShift(id: String) { db.from("shifts").delete { filter { eq("id", id) } } }
 
     /** Registra el cobro y marca esas jornadas como cobradas. */
-    suspend fun pay(memberId: String, shifts: List<Shift>, amount: Double, workedMs: Long) {
-        val p: Payment = db.from("payments").insert(
-            NewPayment(memberId, amount, workedMs / 1000, shifts.size),
-        ) { select() }.decodeSingle()
-        db.from("shifts").update({ set("payment_id", p.id) }) { filter { isIn("id", shifts.map { it.id }) } }
+    /** Registra un cobro por monto; lo que falte queda como saldo. worked_seconds guarda el equivalente en horas a la tarifa del momento. */
+    suspend fun pay(memberId: String, amount: Double, rate: Double) {
+        val seconds = if (rate > 0) (amount / rate * 3600).toLong() else 0L
+        db.from("payments").insert(NewPayment(memberId, amount, seconds, 0))
     }
 
-    /** Deshace un cobro: las jornadas vuelven a quedar pendientes. */
+    /** Deshace un cobro: el monto vuelve al saldo. */
     suspend fun undoPay(paymentId: String) {
-        db.from("shifts").update({ set<String?>("payment_id", null) }) { filter { eq("payment_id", paymentId) } }
         db.from("payments").delete { filter { eq("id", paymentId) } }
     }
 
