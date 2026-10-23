@@ -21,6 +21,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import kotlinx.datetime.toLocalDateTime
+import kotlinx.datetime.minus
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.DateTimeUnit
+import androidx.compose.material3.rememberDateRangePickerState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -54,6 +63,7 @@ import kotlinx.datetime.Instant
 
 private enum class HiView(val label: String) { Jornadas("Jornadas"), Movimientos("Movimientos") }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistorialScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
     val sc = LocalStateColors.current
@@ -61,6 +71,11 @@ fun HistorialScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
     var view by rememberSaveable { mutableStateOf(HiView.Jornadas) }
     var person by rememberSaveable { mutableStateOf<String?>(null) }
     var period by rememberSaveable { mutableStateOf(Period.Month) }
+    var rangeFrom by rememberSaveable { mutableStateOf(Dates.today().minus(7, DateTimeUnit.DAY).toString()) }
+    var rangeTo by rememberSaveable { mutableStateOf(Dates.today().toString()) }
+    var pickRange by remember { mutableStateOf(false) }
+    val from = LocalDate.parse(rangeFrom)
+    val to = LocalDate.parse(rangeTo)
     var cat by rememberSaveable { mutableStateOf<AuditCat?>(null) }
     var detail by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -82,8 +97,14 @@ fun HistorialScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
         PersonPicker(pickable, person, store.me?.id, allLabel = "Todo el equipo") { person = it }
 
         if (view == HiView.Jornadas) {
-            Segmented(listOf(Period.Month, Period.LastMonth, Period.All), period, { it.label }) { period = it }
-            val list = store.shifts.filter { store.member(it.memberId) != null && (person == null || it.memberId == person) && Dates.inPeriod(it.startAt, period) }
+            Segmented(
+                listOf(Period.Month, Period.LastMonth, Period.All, Period.Custom), period,
+                { if (it == Period.Custom && period == Period.Custom) "${Dates.shortDay(from)} – ${Dates.shortDay(to)}" else it.label },
+            ) { if (it == Period.Custom) pickRange = true else period = it }
+            val list = store.shifts.filter {
+                store.member(it.memberId) != null && (person == null || it.memberId == person) &&
+                    (if (period == Period.Custom) Dates.inRange(it.startAt, from, to) else Dates.inPeriod(it.startAt, period))
+            }
             TotalCard(
                 "Total del filtro",
                 Calc.money(list.sumOf { Calc.earned(it, store.member(it.memberId), store.settings, now) }, cur),
@@ -121,6 +142,41 @@ fun HistorialScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
             }
         }
         Spacer(Modifier.height(8.dp))
+    }
+
+    if (pickRange) {
+        val noon = 12 * 3_600_000L
+        val state = rememberDateRangePickerState(
+            initialSelectedStartDateMillis = Dates.startOf(from).toEpochMilliseconds() + noon,
+            initialSelectedEndDateMillis = Dates.startOf(to).toEpochMilliseconds() + noon,
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickRange = false },
+            confirmButton = {
+                TextButton(
+                    enabled = state.selectedStartDateMillis != null,
+                    onClick = {
+                        val a = state.selectedStartDateMillis!!
+                        val b = state.selectedEndDateMillis ?: a
+                        rangeFrom = Instant.fromEpochMilliseconds(a).toLocalDateTime(TimeZone.UTC).date.toString()
+                        rangeTo = Instant.fromEpochMilliseconds(b).toLocalDateTime(TimeZone.UTC).date.toString()
+                        period = Period.Custom
+                        pickRange = false
+                    },
+                ) { Text("Listo") }
+            },
+            dismissButton = { TextButton(onClick = { pickRange = false }) { Text("Cancelar") } },
+        ) {
+            DateRangePicker(
+                state = state, showModeToggle = false, modifier = Modifier.weight(1f),
+                title = { Text("Período", Modifier.padding(start = 24.dp, top = 16.dp), fontSize = 14.sp) },
+                headline = {
+                    val a = state.selectedStartDateMillis?.let { Dates.shortDay(Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.UTC).date) } ?: "Desde"
+                    val b = state.selectedEndDateMillis?.let { Dates.shortDay(Instant.fromEpochMilliseconds(it).toLocalDateTime(TimeZone.UTC).date) } ?: "Hasta"
+                    Text("$a – $b", Modifier.padding(start = 24.dp, bottom = 12.dp), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                },
+            )
+        }
     }
 
     detail?.let { id ->
