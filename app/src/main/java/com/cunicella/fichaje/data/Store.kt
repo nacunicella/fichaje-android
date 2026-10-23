@@ -11,6 +11,7 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.minus
+import kotlinx.datetime.plus
 import kotlinx.datetime.toJavaLocalDate
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.todayIn
@@ -44,7 +45,7 @@ data class Store(
     }
 }
 
-enum class Period(val label: String) { Today("Hoy"), Month("Este mes"), LastMonth("Mes pasado"), All("Todo") }
+enum class Period(val label: String) { Today("Hoy"), Month("Este mes"), LastMonth("Mes pasado"), All("Todo"), Custom("Otro") }
 
 /** Fechas y períodos, siempre en la zona horaria del teléfono. */
 object Dates {
@@ -65,7 +66,13 @@ object Dates {
         Period.Month -> i >= startOfMonth()
         Period.LastMonth -> i >= startOfLastMonth() && i < startOfMonth()
         Period.All -> true
+        Period.Custom -> true // el rango lo aplica la pantalla con inRange
     }
+
+    /** Fechas inclusive, de principio a fin de día. */
+    fun inRange(i: Instant, from: LocalDate, to: LocalDate): Boolean = i >= startOf(from) && i < startOf(to.plus(1, DateTimeUnit.DAY))
+
+    fun shortDay(d: LocalDate): String = d.toJavaLocalDate().format(if (d.year == today().year) shortFmt else shortYearFmt).replace(".", "")
 
     /** "Hoy", "Ayer" o "lunes 20 de octubre". */
     fun dayLabel(d: LocalDate): String {
