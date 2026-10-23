@@ -7,6 +7,7 @@ import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.datetime.Clock
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.datetime.Instant
 
 /** Todo lo que se lee y escribe en Supabase. La auditoría la registra la base sola (triggers). */
@@ -96,6 +97,91 @@ object Repo {
                     }) { filter { eq("id", p.id) } }
             }
         }
+    }
+
+    // ------------------------------------------------------------ equipo, historial, cobros
+
+    suspend fun allMembers(): List<Member> =
+        db.from("members").select { order("first_name", Order.ASCENDING) }.decodeList()
+
+    /** Todas las jornadas con sus pausas. PostgREST corta en 1000 filas, así que se pide por páginas. */
+    suspend fun allShifts(): List<Shift> {
+        val page = 1000L
+        val out = ArrayList<Shift>()
+        var from = 0L
+        while (true) {
+            val chunk: List<Shift> = db.from("shifts").select(withPauses) {
+                order("start_at", Order.DESCENDING)
+                range(from, from + page - 1)
+            }.decodeList()
+            out += chunk
+            if (chunk.size < page) break
+            from += page
+        }
+        return out
+    }
+
+    suspend fun payments(): List<Payment> =
+        db.from("payments").select { order("paid_at", Order.DESCENDING) }.decodeList()
+
+    suspend fun audit(before: Instant?, limit: Long): List<AuditRow> =
+        db.from("audit_log").select {
+            if (before != null) filter { lt("at", before.toString()) }
+            order("at", Order.DESCENDING)
+            limit(limit)
+        }.decodeList()
+
+    suspend fun addMember(m: NewMember) { db.from("members").insert(m) }
+
+    suspend fun updateMember(id: String, m: NewMember) {
+        db.from("members").update({
+            set("first_name", m.firstName)
+            set("last_name", m.lastName)
+            set("email", m.email)
+            set("rate", m.rate)
+            set("active", m.active)
+            set("role", m.role)
+        }) { filter { eq("id", id) } }
+    }
+
+    suspend fun deleteMember(id: String) { db.from("members").delete { filter { eq("id", id) } } }
+
+    suspend fun addManual(s: ManualShift, pauseMinutes: Int) {
+        val saved: Shift = db.from("shifts").insert(s) { select() }.decodeSingle()
+        if (pauseMinutes > 0 && s.hours == null) {
+            // una sola pausa, centrada en la jornada (igual que el prototipo)
+            val total = (s.endAt - s.startAt).inWholeMilliseconds
+            val pz = pauseMinutes * 60_000L
+            val st = s.startAt + ((total - pz) / 2).milliseconds
+            db.from("pauses").insert(NewPause(saved.id, st, st + pz.milliseconds))
+        }
+    }
+
+    suspend fun deleteShift(id: String) { db.from("shifts").delete { filter { eq("id", id) } } }
+
+    /** Registra el cobro y marca esas jornadas como cobradas. */
+    suspend fun pay(memberId: String, shifts: List<Shift>, amount: Double, workedMs: Long) {
+        val p: Payment = db.from("payments").insert(
+            NewPayment(memberId, amount, workedMs / 1000, shifts.size),
+        ) { select() }.decodeSingle()
+        db.from("shifts").update({ set("payment_id", p.id) }) { filter { isIn("id", shifts.map { it.id }) } }
+    }
+
+    /** Deshace un cobro: las jornadas vuelven a quedar pendientes. */
+    suspend fun undoPay(paymentId: String) {
+        db.from("shifts").update({ set<String?>("payment_id", null) }) { filter { eq("payment_id", paymentId) } }
+        db.from("payments").delete { filter { eq("id", paymentId) } }
+    }
+
+    suspend fun updateSettings(s: Settings) {
+        db.from("settings").update({
+            set("company", s.company)
+            set("currency", s.currency)
+            set("rate", s.rate)
+            set("holiday_mult", s.holidayMult)
+            set("goal_hours", s.goalHours)
+            set("updated_at", Clock.System.now().toString())
+        }) { filter { eq("id", 1) } }
     }
 
     private suspend fun closePauses(shiftId: String, at: Instant) {

@@ -66,3 +66,59 @@ data class NewPause(
     @SerialName("start_at") val startAt: Instant,
     @SerialName("end_at") val endAt: Instant? = null,
 )
+
+@Serializable
+data class Payment(
+    val id: String,
+    @SerialName("member_id") val memberId: String,
+    @SerialName("paid_at") val paidAt: Instant,
+    val amount: Double,
+    @SerialName("worked_seconds") val workedSeconds: Long,
+    @SerialName("shift_count") val shiftCount: Int,
+)
+
+@Serializable
+data class NewPayment(
+    @SerialName("member_id") val memberId: String,
+    val amount: Double,
+    @SerialName("worked_seconds") val workedSeconds: Long,
+    @SerialName("shift_count") val shiftCount: Int,
+)
+
+/** Jornada cargada a mano, por horario o por horas. */
+@Serializable
+data class ManualShift(
+    @SerialName("member_id") val memberId: String,
+    @SerialName("start_at") val startAt: Instant,
+    @SerialName("end_at") val endAt: Instant,
+    val hours: Double? = null,
+    val holiday: Boolean = false,
+    val manual: Boolean = true,
+    val note: String? = null,
+    val rate: Double,
+)
+
+@Serializable
+data class NewMember(
+    @SerialName("first_name") val firstName: String,
+    @SerialName("last_name") val lastName: String,
+    val email: String?,
+    val rate: Double?,
+    val active: Boolean,
+    val role: String,
+)
+
+/** Una fila de la auditoría tal como la escribe el trigger. */
+@Serializable
+data class AuditRow(
+    val id: Long,
+    val at: Instant,
+    @SerialName("actor_user") val actorUser: String? = null,
+    @SerialName("actor_member") val actorMember: String? = null,
+    @SerialName("table_name") val table: String,
+    val action: String,
+    @SerialName("row_id") val rowId: String? = null,
+    @SerialName("member_id") val memberId: String? = null,
+    @SerialName("old_data") val old: kotlinx.serialization.json.JsonObject? = null,
+    @SerialName("new_data") val new: kotlinx.serialization.json.JsonObject? = null,
+)

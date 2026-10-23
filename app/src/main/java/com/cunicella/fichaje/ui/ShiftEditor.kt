@@ -72,7 +72,7 @@ private sealed interface Target {
  * Pone la hora elegida en el día de [anchor]. Si queda más de una hora antes de [notBefore],
  * se pasa al día siguiente (jornadas que cruzan la medianoche).
  */
-private fun at(anchor: Instant, h: Int, m: Int, notBefore: Instant? = null): Instant {
+internal fun at(anchor: Instant, h: Int, m: Int, notBefore: Instant? = null): Instant {
     val tz = TimeZone.currentSystemDefault()
     val day = anchor.toLocalDateTime(tz).date
     val t = LocalDateTime(day, LocalTime(h, m)).toInstant(tz)
@@ -173,7 +173,7 @@ fun ShiftEditorSheet(
 }
 
 @Composable
-private fun Line(dot: Color, label: String, content: @Composable () -> Unit) {
+internal fun Line(dot: Color, label: String, content: @Composable () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().height(44.dp)) {
         Box(Modifier.size(10.dp).clip(CircleShape).background(dot))
         Spacer(Modifier.width(10.dp))
@@ -183,7 +183,7 @@ private fun Line(dot: Color, label: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun TimeChip(t: Instant?, empty: String = "--:--", onClick: () -> Unit) {
+internal fun TimeChip(t: Instant?, empty: String = "--:--", onClick: () -> Unit) {
     Text(
         t?.let { Calc.hm(it) } ?: empty,
         Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
@@ -194,7 +194,7 @@ private fun TimeChip(t: Instant?, empty: String = "--:--", onClick: () -> Unit) 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TimeDialog(initial: Instant, onDismiss: () -> Unit, onPick: (Int, Int) -> Unit) {
+internal fun TimeDialog(initial: Instant, onDismiss: () -> Unit, onPick: (Int, Int) -> Unit) {
     val t = initial.toLocalDateTime(TimeZone.currentSystemDefault())
     val state = rememberTimePickerState(initialHour = t.hour, initialMinute = t.minute, is24Hour = true)
     AlertDialog(
