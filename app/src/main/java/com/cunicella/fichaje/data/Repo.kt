@@ -120,6 +120,7 @@ data class Snapshot(
 
     companion object {
         suspend fun load(): Snapshot = coroutineScope {
+            if (!Supa.ensureSession()) throw Supa.NoSession()
             // todo en paralelo: es lo que más se nota en la velocidad
             val meQ = async { Repo.me() }
             val settingsQ = async { Repo.settings() }
