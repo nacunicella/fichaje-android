@@ -97,6 +97,13 @@ object Repo {
         db.from("shifts").update({ set("note", note?.trim()?.ifBlank { null }) }) { filter { eq("id", shiftId) } }
     }
 
+    /** Igual que [saveEdit], pero busca la jornada en el servidor primero (para la cola sin conexión). */
+    suspend fun saveEditById(shiftId: String, d: ShiftDraft, rate: Double) {
+        val shift: Shift = db.from("shifts").select(withPauses) { filter { eq("id", shiftId) } }.decodeSingle()
+        val known = shift.pauses.map { it.id }.toSet()
+        saveEdit(shift, d.copy(pauses = d.pauses.map { p -> if (p.id in known) p else p.copy(id = null) }), rate)
+    }
+
     /** Guarda lo que se cambió en el editor de jornada: entrada, salida y pausas. */
     suspend fun saveEdit(shift: Shift, d: ShiftDraft, rate: Double) {
         db.from("shifts").update({
@@ -217,6 +224,9 @@ object Repo {
     /** Borra de verdad lo que lleva más de 30 días en la papelera. Falla en silencio si la base todavía no tiene la función. */
     suspend fun purgeTrash() { runCatching { db.postgrest.rpc("purge_trash") } }
 
+    /** Borra el usuario (login) y deja al integrante inactivo; las jornadas quedan para el admin. */
+    suspend fun deleteAccount() { db.postgrest.rpc("delete_my_account") }
+
     suspend fun newInvite(memberId: String): String =
         db.postgrest.rpc("new_invite", buildJsonObject { put("member", memberId) }).decodeAs<String>()
 
@@ -287,8 +297,10 @@ data class Snapshot(
 }
 
 /** Lo que se está editando de una jornada. Pausas sin id = nuevas. */
+@Serializable
 data class PauseDraft(val id: String?, val start: Instant, val end: Instant?)
 
+@Serializable
 data class ShiftDraft(val start: Instant, val end: Instant?, val pauses: List<PauseDraft>, val note: String? = null) {
     /** Mismas reglas que el prototipo. Devuelve el error a mostrar, o null si está bien. */
     fun problem(open: Boolean, now: Instant): String? {

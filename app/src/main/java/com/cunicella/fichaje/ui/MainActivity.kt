@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
@@ -57,6 +56,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.cunicella.fichaje.data.Repo
 import com.cunicella.fichaje.data.Supa
 import com.cunicella.fichaje.update.Updates
 import com.cunicella.fichaje.widget.ClockWidget
@@ -165,7 +165,6 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
                     }
                     if (isAdmin) IconButton(onClick = { configOpen = true }) { Icon(Icons.Filled.Settings, contentDescription = "Configuración") }
                     IconButton(onClick = { accountOpen = true }) { Avatar(ui.snap?.me?.initials ?: "?") }
-                    IconButton(onClick = signOut) { Icon(Icons.Filled.ExitToApp, contentDescription = "Cerrar sesión") }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
@@ -200,6 +199,11 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
             settings = ui.snap?.settings,
             onUpdateFound = { accountOpen = false; onUpdateFound(it) },
             onSignOut = signOut,
+            onDeleteAccount = {
+                val r = runCatching { Repo.deleteAccount() }
+                if (r.isSuccess) signOut()
+                r.exceptionOrNull()?.let { Supa.friendly(it) }
+            },
             onDismiss = { accountOpen = false },
             onEditProfile = if (dataUi.store?.me != null) ({ accountOpen = false; profileOpen = true }) else null,
             onSettings = if (isAdmin) ({ accountOpen = false; configOpen = true }) else null,
