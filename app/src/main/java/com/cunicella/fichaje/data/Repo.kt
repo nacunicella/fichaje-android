@@ -10,6 +10,7 @@ import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.Serializable
 import kotlinx.datetime.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.datetime.Instant
@@ -57,15 +58,21 @@ object Repo {
             order("start_at", Order.ASCENDING)
         }.decodeList()
 
-    suspend fun start(memberId: String, holiday: Boolean, at: Instant = Clock.System.now()) {
-        db.from("shifts").insert(NewShift(memberId, at, holiday))
+    suspend fun start(memberId: String, holiday: Boolean, at: Instant = Clock.System.now()): Shift =
+        db.from("shifts").insert(NewShift(memberId, at, holiday)) { select() }.decodeSingle()
+
+    suspend fun pause(shiftId: String, at: Instant = Clock.System.now()) {
+        db.from("pauses").insert(NewPause(shiftId, at))
     }
 
-    suspend fun pause(shiftId: String) {
-        db.from("pauses").insert(NewPause(shiftId, Clock.System.now()))
-    }
+    suspend fun resume(shiftId: String, at: Instant = Clock.System.now()) = closePauses(shiftId, at)
 
-    suspend fun resume(shiftId: String) = closePauses(shiftId, Clock.System.now())
+    /** Cierra una jornada por id (lo usa la cola sin conexión, que no tiene la jornada a mano). */
+    suspend fun stopById(shiftId: String, rate: Double, at: Instant): Boolean {
+        val shift: Shift = db.from("shifts").select(withPauses) { filter { eq("id", shiftId) } }.decodeSingle()
+        if (!Calc.isOpen(shift)) return true // ya estaba cerrada: gana lo que hay en el servidor
+        return stop(shift, rate, at)
+    }
 
     suspend fun setHoliday(shiftId: String, holiday: Boolean) {
         db.from("shifts").update({ set("holiday", holiday) }) { filter { eq("id", shiftId) } }
@@ -238,6 +245,7 @@ object Repo {
 }
 
 /** Foto de lo que necesitan la pantalla Hoy y el widget. */
+@Serializable
 data class Snapshot(
     val me: Member?,
     val settings: Settings,
@@ -248,8 +256,19 @@ data class Snapshot(
     val myOpen: Shift? get() = openAll.firstOrNull { it.memberId == me?.id }
 
     companion object {
+        /** Del servidor; si no hay señal, la última foto guardada con las fichadas pendientes aplicadas. */
+        suspend fun loadOrLocal(): Pair<Snapshot, Boolean> {
+            val r = runCatching { load() }
+            r.getOrNull()?.let { return it to false }
+            val e = r.exceptionOrNull()!!
+            if (!Offline.isNetError(e)) throw e
+            Offline.offline.value = true
+            return (Offline.localSnapshot() ?: throw e) to true
+        }
+
         suspend fun load(): Snapshot = coroutineScope {
             if (!Supa.ensureSession()) throw Supa.NoSession()
+            Offline.flush()
             // todo en paralelo: es lo que más se nota en la velocidad
             val meQ = async { Repo.me() }
             val settingsQ = async { Repo.settings() }
@@ -262,7 +281,7 @@ data class Snapshot(
             val open = openQ.await()
             // una jornada abierta desde ayer también cuenta como "hoy"
             val mine = (today + open.filter { it.memberId == me?.id }).distinctBy { it.id }
-            Snapshot(me, settings, members, mine, open)
+            Snapshot(me, settings, members, mine, open).also { Offline.cache(it); Offline.offline.value = false }
         }
     }
 }

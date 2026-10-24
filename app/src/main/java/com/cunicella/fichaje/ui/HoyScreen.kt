@@ -56,6 +56,11 @@ import com.cunicella.fichaje.data.Repo
 import com.cunicella.fichaje.data.Shift
 import com.cunicella.fichaje.data.ShiftDraft
 import com.cunicella.fichaje.data.Snapshot
+import com.cunicella.fichaje.data.Offline
+import com.cunicella.fichaje.data.Op
+import com.cunicella.fichaje.data.apply
+import com.cunicella.fichaje.data.closePauses
+import com.cunicella.fichaje.data.mapShift
 import com.cunicella.fichaje.data.Supa
 import com.cunicella.fichaje.widget.ClockWidget
 import kotlinx.coroutines.delay
@@ -76,32 +81,58 @@ data class HoyUi(
     val editing: String? = null,
     /** Jornada recién terminada a la que se le puede dejar una nota. */
     val noteFor: String? = null,
+    /** La foto que se ve es la guardada en el teléfono (no hubo señal). */
+    val offline: Boolean = false,
+    /** Fichadas esperando señal para mandarse. */
+    val pending: Int = 0,
 )
-
-/** Aplica un cambio a una jornada mía en la foto local, para que la pantalla responda al instante. */
-private fun Snapshot.mapShift(id: String, f: (Shift) -> Shift): Snapshot = copy(
-    mineToday = mineToday.map { if (it.id == id) f(it) else it },
-    openAll = openAll.map { if (it.id == id) f(it) else it }.filter { Calc.isOpen(it) },
-)
-
-private fun Shift.closePauses(at: Instant) = copy(pauses = pauses.map { if (it.endAt == null) it.copy(endAt = at) else it })
 
 class HoyViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(HoyUi())
     val ui: StateFlow<HoyUi> = _ui
 
     init {
+        Offline.init(app)
         refresh()
         viewModelScope.launch { Sync.changes.collect { if (it !== this@HoyViewModel) refresh() } }
+        viewModelScope.launch { Offline.pendingCount.collect { n -> _ui.update { it.copy(pending = n) } } }
+        viewModelScope.launch { Offline.offline.collect { off -> _ui.update { it.copy(offline = off) } } }
     }
 
     fun refresh() = viewModelScope.launch {
-        runCatching { Snapshot.load() }
-            .onSuccess { s ->
-                _ui.update { it.copy(loading = false, snap = s, error = null) }
+        runCatching { Snapshot.loadOrLocal() }
+            .onSuccess { (s, local) ->
+                _ui.update { it.copy(loading = false, snap = s, error = null, offline = local) }
                 ClockWidget.show(getApplication(), s)
             }
             .onFailure { e -> _ui.update { it.copy(loading = false, error = "No se pudo cargar. ${Supa.friendly(e)}") } }
+    }
+
+    /**
+     * Una fichada: se aplica a la foto al instante y se manda. Sin señal queda en cola
+     * y se sincroniza sola después; la pantalla sigue andando con la hora del teléfono.
+     */
+    private fun fichar(op: Op, done: String?, after: ((Snapshot) -> Unit)? = null) {
+        val snap = _ui.value.snap ?: return
+        if (_ui.value.busy) return
+        val optimistic = snap.apply(op)
+        _ui.update { it.copy(busy = true, toast = done, error = null, snap = optimistic) }
+        viewModelScope.launch {
+            val result = runCatching { Offline.submit(op) }
+            val queued = result.getOrDefault(false)
+            val (fresh, local) = runCatching { Snapshot.loadOrLocal() }.getOrNull() ?: (optimistic to true)
+            _ui.update {
+                it.copy(
+                    busy = false,
+                    snap = if (result.isFailure) snap else fresh,
+                    offline = local,
+                    error = result.exceptionOrNull()?.let { e -> "No se pudo guardar. ${Supa.friendly(e)}" },
+                    toast = if (result.isFailure) null else if (queued) "${done ?: "Guardado"} · sin señal, se sincroniza solo" else done,
+                )
+            }
+            ClockWidget.show(getApplication(), _ui.value.snap ?: fresh)
+            if (result.isSuccess) { after?.invoke(_ui.value.snap ?: fresh); Sync.changed(this@HoyViewModel) }
+        }
     }
 
     /**
@@ -117,7 +148,7 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
                 if (!Supa.ensureSession()) throw Supa.NoSession()
                 block(snap)
             }
-            val fresh = runCatching { Snapshot.load() }.getOrNull()
+            val fresh = runCatching { Snapshot.loadOrLocal().first }.getOrNull()
             _ui.update {
                 it.copy(
                     busy = false,
@@ -132,40 +163,36 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun start() {
+        val s = _ui.value.snap ?: return
+        val me = s.me ?: return
+        if (s.myOpen != null) return
         val now = Clock.System.now()
         val hol = _ui.value.holidayNext
-        act("Jornada iniciada a las ${Calc.hm(now)}", optimistic = { s ->
-            val local = Shift(id = "local", memberId = s.me!!.id, startAt = now, holiday = hol)
-            s.copy(mineToday = s.mineToday + local, openAll = s.openAll + local)
-        }) { s ->
-            Repo.start(s.me!!.id, hol, now)
-            _ui.update { it.copy(holidayNext = false) }
-            null
-        }
+        _ui.update { it.copy(holidayNext = false) }
+        fichar(Op(kind = Op.START, at = now, memberId = me.id, shiftId = Op.localId(), holiday = hol), "Jornada iniciada a las ${Calc.hm(now)}")
     }
 
     fun pause() {
-        val now = Clock.System.now()
-        act("Pausa iniciada", optimistic = { s ->
-            s.mapShift(s.myOpen!!.id) { it.copy(pauses = it.pauses + Pause("local", it.id, now)) }
-        }) { s -> Repo.pause(s.myOpen!!.id); null }
+        val s = _ui.value.snap ?: return
+        val open = s.myOpen ?: return
+        fichar(Op(kind = Op.PAUSE, at = Clock.System.now(), memberId = open.memberId, shiftId = open.id), "Pausa iniciada")
     }
 
     fun resume() {
-        val now = Clock.System.now()
-        act("Seguís en turno", optimistic = { s -> s.mapShift(s.myOpen!!.id) { it.closePauses(now) } }) { s -> Repo.resume(s.myOpen!!.id); null }
+        val s = _ui.value.snap ?: return
+        val open = s.myOpen ?: return
+        fichar(Op(kind = Op.RESUME, at = Clock.System.now(), memberId = open.memberId, shiftId = open.id), "Seguís en turno")
     }
 
     fun stop() {
+        val s = _ui.value.snap ?: return
+        val open = s.myOpen ?: return
         val now = Clock.System.now()
-        act("Jornada terminada", optimistic = { s -> s.mapShift(s.myOpen!!.id) { it.closePauses(now).copy(endAt = now) } }) { s ->
-            val open = s.myOpen!!
-            val saved = Repo.stop(open, Calc.currentRate(s.me, s.settings), now)
-            if (saved) {
-                _ui.update { it.copy(noteFor = open.id) }
-                null
-            } else "Jornada de menos de un minuto: no se guardó"
-        }
+        val tooShort = Calc.workMs(open.closePauses(now).copy(endAt = now), now) < 60_000
+        fichar(
+            Op(kind = Op.STOP, at = now, memberId = open.memberId, shiftId = open.id, rate = Calc.currentRate(s.me, s.settings)),
+            if (tooShort) "Jornada de menos de un minuto: no se guarda" else "Jornada terminada",
+        ) { if (!tooShort) _ui.update { it.copy(noteFor = open.id) } }
     }
 
     fun dismissNote() = _ui.update { it.copy(noteFor = null) }
@@ -173,7 +200,9 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
     fun saveNote(id: String, note: String) {
         _ui.update { it.copy(noteFor = null) }
         if (note.isBlank()) return
-        act("Nota guardada", optimistic = { s -> s.mapShift(id) { it.copy(note = note.trim()) } }) { Repo.setNote(id, note); null }
+        val s = _ui.value.snap ?: return
+        val shift = s.mineToday.firstOrNull { it.id == id } ?: return
+        fichar(Op(kind = Op.NOTE, at = Clock.System.now(), memberId = shift.memberId, shiftId = id, note = note.trim()), "Nota guardada")
     }
 
     fun setHoliday(v: Boolean) {
@@ -236,6 +265,13 @@ fun HoyScreen(vm: HoyViewModel) {
         }
         ui.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         ui.toast?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp) }
+        if (ui.offline || ui.pending > 0) {
+            Text(
+                (if (ui.offline) "Sin conexión: se muestra lo guardado en el teléfono" else "Sincronizando") +
+                    (if (ui.pending > 0) " · ${ui.pending} fichada${if (ui.pending == 1) "" else "s"} por mandar" else ""),
+                color = LocalStateColors.current.warn, fontSize = 13.sp,
+            )
+        }
         NowCard(snap, now)
     }
     ui.noteFor?.let { id -> NoteSheet(onSkip = { vm.dismissNote() }) { vm.saveNote(id, it) } }
@@ -294,7 +330,7 @@ private fun ClockCard(ui: HoyUi, snap: Snapshot, now: kotlinx.datetime.Instant, 
                 color = sc.muted, fontSize = 13.sp,
             )
             // la jornada que editan los lápices: la abierta o la última de hoy
-            val editable = (open ?: snap.mineToday.filter { it.hours == null }.maxByOrNull { it.startAt })?.takeIf { it.id != "local" }
+            val editable = (open ?: snap.mineToday.filter { it.hours == null }.maxByOrNull { it.startAt })?.takeIf { !it.id.startsWith("local") }
             val onEdit: (() -> Unit)? = editable?.let { e -> { vm.edit(e.id) } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Fact("Generado", Calc.money(stats.earned, snap.settings.currency), Modifier.weight(1f))

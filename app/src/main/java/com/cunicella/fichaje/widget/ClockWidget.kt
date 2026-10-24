@@ -57,6 +57,8 @@ import com.cunicella.fichaje.data.DayStats
 import com.cunicella.fichaje.data.Repo
 import com.cunicella.fichaje.data.Snapshot
 import com.cunicella.fichaje.data.Privacy
+import com.cunicella.fichaje.data.Offline
+import com.cunicella.fichaje.data.Op
 import com.cunicella.fichaje.data.Supa
 import com.cunicella.fichaje.ui.MainActivity
 import kotlinx.coroutines.sync.Mutex
@@ -113,9 +115,9 @@ internal data class WidgetState(
             }
         }
 
-        suspend fun load(): WidgetState = runCatching {
+        suspend fun load(context: Context): WidgetState = runCatching {
             if (!Supa.awaitSession()) WidgetState("Fichaje", "Abrí la app para iniciar sesión", message = "Entrá")
-            else of(Snapshot.load())
+            else { Offline.init(context); of(Snapshot.loadOrLocal().first) }
         }.getOrElse { WidgetState("Fichaje", "Tocá para abrir la app", message = "Sin conexión") }
     }
 }
@@ -152,7 +154,7 @@ class ClockWidget : GlanceAppWidget() {
         // que es lento y pisaría el cambio recién hecho). Si no, Android pidió un update
         // (al agregarlo o cada 30 min) y traemos datos frescos.
         val recent = lastState?.takeIf { System.currentTimeMillis() - lastStateAt < 2 * 60_000 || pendingActions.get() > 0 }
-        val fresh = recent ?: WidgetState.load().also {
+        val fresh = recent ?: WidgetState.load(context).also {
             if (pendingActions.get() == 0) {
                 lastState = it
                 updateAppWidgetState(context, id) { p -> it.write(p) }
@@ -253,7 +255,7 @@ class ClockWidget : GlanceAppWidget() {
         suspend fun show(context: Context, snap: Snapshot) = push(context, WidgetState.of(snap))
 
         /** Recarga desde el servidor (p. ej. al cerrar sesión). */
-        suspend fun refreshAll(context: Context) = push(context, WidgetState.load())
+        suspend fun refreshAll(context: Context) = push(context, WidgetState.load(context))
 
         internal suspend fun push(context: Context, s: WidgetState) {
             lastState = s
@@ -309,24 +311,28 @@ internal suspend fun runShiftAction(context: Context, action: ShiftAction) {
             }
             if (guess != null) ClockWidget.push(context, guess)
             runCatching {
-                if (Supa.ensureSession()) {
-                    val id = before?.shiftId
-                    if (action == ShiftAction.PauseToggle && id != null && before.open) {
-                        // un solo pedido: no hace falta recargar todo para pausar
-                        if (before.paused) Repo.resume(id) else Repo.pause(id)
-                    } else {
-                        val s = Snapshot.load()
-                        val me = s.me
-                        val open = s.myOpen
-                        if (me != null) when (action) {
-                            ShiftAction.Start -> if (open == null) Repo.start(me.id, holiday = false)
-                            ShiftAction.PauseToggle -> if (open != null) {
-                                if (Calc.isPaused(open)) Repo.resume(open.id) else Repo.pause(open.id)
-                            }
-                            ShiftAction.Stop -> if (open != null) Repo.stop(open, Calc.currentRate(me, s.settings))
-                        }
+                Offline.init(context)
+                val at = Instant.fromEpochMilliseconds(now)
+                // Con la cola, el toque se guarda aunque no haya señal y se manda después, en orden.
+                val sid = before?.shiftId
+                val op = if (action != ShiftAction.Start && sid != null && before.open) {
+                    // ya sabemos qué jornada es: un solo pedido, sin recargar nada
+                    val local = Offline.localSnapshot()
+                    val me = local?.me
+                    if (action == ShiftAction.PauseToggle) Op(kind = if (before.paused) Op.RESUME else Op.PAUSE, at = at, memberId = me?.id ?: "", shiftId = sid)
+                    else Op(kind = Op.STOP, at = at, memberId = me?.id ?: "", shiftId = sid, rate = local?.let { Calc.currentRate(it.me, it.settings) } ?: 0.0)
+                } else {
+                    val local = Offline.localSnapshot()
+                    val s = if (local != null && (Offline.hasPending() || Offline.offline.value)) local else Snapshot.loadOrLocal().first
+                    val me = s.me
+                    val open = s.myOpen
+                    if (me == null) null else when (action) {
+                        ShiftAction.Start -> if (open == null) Op(kind = Op.START, at = at, memberId = me.id, shiftId = Op.localId()) else null
+                        ShiftAction.PauseToggle -> open?.let { Op(kind = if (Calc.isPaused(it)) Op.RESUME else Op.PAUSE, at = at, memberId = it.memberId, shiftId = it.id) }
+                        ShiftAction.Stop -> open?.let { Op(kind = Op.STOP, at = at, memberId = it.memberId, shiftId = it.id, rate = Calc.currentRate(me, s.settings)) }
                     }
                 }
+                if (op != null) Offline.submit(op)
             }
         }
     } finally {
