@@ -52,6 +52,7 @@ object Calc {
     }
 
     fun money(amount: Double, currency: String): String {
+        if (Privacy.hidden) return "$ ••••"
         val f = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-AR"))
         runCatching { f.currency = Currency.getInstance(currency) }
         f.maximumFractionDigits = 0

@@ -323,10 +323,7 @@ private fun ClockCard(ui: HoyUi, snap: Snapshot, now: kotlinx.datetime.Instant, 
                         onClick = { if (paused) vm.resume() else vm.pause() },
                         modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(12.dp),
                     ) { Text(if (paused) "Reanudar" else "Pausar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-                    Button(
-                        onClick = { vm.stop() },
-                        modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(12.dp),
-                    ) { Text("Terminar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+                    SlideToConfirm("Terminar ››", Modifier.weight(1.4f), enabled = !ui.busy) { vm.stop() }
                 }
             }
         }

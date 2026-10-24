@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.cunicella.fichaje.data.Calc
 import com.cunicella.fichaje.data.Dates
 import com.cunicella.fichaje.data.Member
+import com.cunicella.fichaje.data.PayMethod
 import com.cunicella.fichaje.data.Payment
 import com.cunicella.fichaje.data.Period
 import com.cunicella.fichaje.data.Repo
@@ -112,7 +113,7 @@ fun CobrarScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
             Row(Modifier.fillMaxWidth().clickable { paymentOpen = p.id }.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(Dates.short(p.paidAt), fontWeight = FontWeight.SemiBold)
-                    Text("≈ ${Calc.dur(p.workedSeconds * 1000)} a la tarifa de ese momento", color = sc.muted, fontSize = 12.5.sp, fontFamily = Mono)
+                    Text((p.method?.let { PayMethod.label(it) + " · " } ?: "") + "≈ ${Calc.dur(p.workedSeconds * 1000)}", color = sc.muted, fontSize = 12.5.sp, fontFamily = Mono)
                 }
                 Text(Calc.money(p.amount, st.currency), fontFamily = Mono, fontWeight = FontWeight.Bold)
             }
@@ -120,9 +121,9 @@ fun CobrarScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
         Spacer(Modifier.height(8.dp))
 
         if (paying) {
-            PaySheet(m, balance, rate, st.currency, onDismiss = { paying = false }) { amount ->
+            PaySheet(m, balance, rate, st.currency, onDismiss = { paying = false }) { amount, method ->
                 paying = false
-                vm.run("Cobro registrado: ${Calc.money(amount, st.currency)}") { Repo.pay(m.id, amount, rate) }
+                vm.run("Cobro registrado: ${Calc.money(amount, st.currency)}") { Repo.pay(m.id, amount, rate, method) }
             }
         }
     }
@@ -134,8 +135,9 @@ fun CobrarScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
 }
 
 @Composable
-private fun PaySheet(m: Member, balance: Double, rate: Double, currency: String, onDismiss: () -> Unit, onPay: (Double) -> Unit) {
+private fun PaySheet(m: Member, balance: Double, rate: Double, currency: String, onDismiss: () -> Unit, onPay: (Double, PayMethod?) -> Unit) {
     val sc = LocalStateColors.current
+    var method by rememberSaveable { mutableStateOf<PayMethod?>(null) }
     val pending = balance.coerceAtLeast(0.0).roundToLong()
     var text by rememberSaveable { mutableStateOf(if (pending > 0) pending.toString() else "") }
     val amount = text.replace(".", "").replace(",", ".").toDoubleOrNull()?.takeIf { it > 0 }
@@ -161,7 +163,11 @@ private fun PaySheet(m: Member, balance: Double, rate: Double, currency: String,
             },
             color = if (rest < -0.5) sc.warn else sc.muted, fontSize = 13.5.sp,
         )
-        BigButton(amount?.let { "Registrar cobro de ${Calc.money(it, currency)}" } ?: "Registrar cobro", enabled = amount != null) { onPay(amount!!) }
+        FieldLabel("Medio de pago")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PayMethod.entries.forEach { pm -> Chip(pm.label, method == pm) { method = if (method == pm) null else pm } }
+        }
+        BigButton(amount?.let { "Registrar cobro de ${Calc.money(it, currency)}" } ?: "Registrar cobro", enabled = amount != null) { onPay(amount!!, method) }
     }
 }
 
@@ -184,6 +190,7 @@ private fun PaymentSheet(p: Payment, store: Store, vm: DataViewModel, onDismiss:
         KV("Persona", store.nameOf(p.memberId))
         KV("Fecha", Dates.dateTime(p.paidAt))
         KV("Importe", Calc.money(p.amount, st.currency))
+        KV("Medio de pago", PayMethod.label(p.method))
         KV("Equivale a", "≈ ${Calc.dur(p.workedSeconds * 1000)}")
         OutlinedButton(
             onClick = { confirm = true }, modifier = Modifier.fillMaxWidth().height(46.dp), shape = RoundedCornerShape(12.dp),

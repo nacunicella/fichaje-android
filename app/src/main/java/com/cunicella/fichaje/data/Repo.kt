@@ -180,9 +180,9 @@ object Repo {
 
     /** Registra el cobro y marca esas jornadas como cobradas. */
     /** Registra un cobro por monto; lo que falte queda como saldo. worked_seconds guarda el equivalente en horas a la tarifa del momento. */
-    suspend fun pay(memberId: String, amount: Double, rate: Double) {
+    suspend fun pay(memberId: String, amount: Double, rate: Double, method: PayMethod?) {
         val seconds = if (rate > 0) (amount / rate * 3600).toLong() else 0L
-        db.from("payments").insert(NewPayment(memberId, amount, seconds, 0))
+        db.from("payments").insert(NewPayment(memberId, amount, seconds, 0, method?.key))
     }
 
     /** Deshace un cobro: el monto vuelve al saldo. */

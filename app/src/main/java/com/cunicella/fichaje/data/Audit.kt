@@ -120,7 +120,7 @@ object Audit {
             "payments" -> {
                 cat = AuditCat.Cobro
                 text = when (r.action) {
-                    "insert" -> "Registró un cobro de ${money(n.num("amount"), st)}"
+                    "insert" -> "Registró un cobro de ${money(n.num("amount"), st)}" + (n.str("method")?.let { " por ${PayMethod.label(it).lowercase()}" } ?: "")
                     "delete" -> "Deshizo el cobro de ${money(o.num("amount"), st)} del ${o.time("paid_at")?.let { Dates.short(it) }}"
                     else -> when {
                         o.str("deleted_at") == null && n.str("deleted_at") != null -> "Deshizo el cobro de ${money(n.num("amount"), st)} del ${n.time("paid_at")?.let { Dates.short(it) }} (papelera)"
