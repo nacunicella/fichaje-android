@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -153,6 +154,11 @@ fun ShiftEditorSheet(
                     TextButton(onClick = { d = d.copy(end = null) }) { Text("Dejar abierta", fontSize = 13.sp) }
                 }
             }
+            OutlinedTextField(
+                d.note ?: "", { d = d.copy(note = it.take(200)) }, Modifier.fillMaxWidth(),
+                label = { Text("Nota") }, placeholder = { Text("Qué se hizo, dónde, con quién…") },
+                singleLine = false, minLines = 1, maxLines = 3,
+            )
             val preview = d.asShift(shift)
             Text(
                 problem ?: "Quedan ${Calc.dur(Calc.workMs(preview, now))} pagas (${Calc.dur(Calc.pauseMs(preview, now))} de pausa) · " +
