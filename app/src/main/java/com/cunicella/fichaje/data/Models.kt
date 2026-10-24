@@ -79,6 +79,7 @@ data class Payment(
     @SerialName("worked_seconds") val workedSeconds: Long,
     @SerialName("shift_count") val shiftCount: Int,
     @SerialName("deleted_at") val deletedAt: Instant? = null,
+    val method: String? = null,
 )
 
 @Serializable
@@ -87,6 +88,7 @@ data class NewPayment(
     val amount: Double,
     @SerialName("worked_seconds") val workedSeconds: Long,
     @SerialName("shift_count") val shiftCount: Int,
+    val method: String? = null,
 )
 
 /** Jornada cargada a mano, por horario o por horas. */
@@ -126,3 +128,13 @@ data class AuditRow(
     @SerialName("old_data") val old: kotlinx.serialization.json.JsonObject? = null,
     @SerialName("new_data") val new: kotlinx.serialization.json.JsonObject? = null,
 )
+
+/** Medio de pago de un cobro. */
+enum class PayMethod(val key: String, val label: String) {
+    Efectivo("efectivo", "Efectivo"), Transferencia("transferencia", "Transferencia"), MercadoPago("mercadopago", "Mercado Pago");
+
+    companion object {
+        fun of(key: String?): PayMethod? = entries.firstOrNull { it.key == key }
+        fun label(key: String?): String = of(key)?.label ?: "Sin especificar"
+    }
+}

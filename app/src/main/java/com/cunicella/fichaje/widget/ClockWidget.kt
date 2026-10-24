@@ -56,6 +56,7 @@ import com.cunicella.fichaje.data.Calc
 import com.cunicella.fichaje.data.DayStats
 import com.cunicella.fichaje.data.Repo
 import com.cunicella.fichaje.data.Snapshot
+import com.cunicella.fichaje.data.Privacy
 import com.cunicella.fichaje.data.Supa
 import com.cunicella.fichaje.ui.MainActivity
 import kotlinx.coroutines.sync.Mutex
@@ -146,6 +147,7 @@ class ClockWidget : GlanceAppWidget() {
     override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        Privacy.init(context)
         // Si la app o un toque acaban de dejar el estado, lo usamos tal cual (sin ir al servidor,
         // que es lento y pisaría el cambio recién hecho). Si no, Android pidió un update
         // (al agregarlo o cada 30 min) y traemos datos frescos.

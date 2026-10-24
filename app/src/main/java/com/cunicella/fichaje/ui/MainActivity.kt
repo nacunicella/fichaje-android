@@ -24,6 +24,10 @@ import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.LocalContentColor
+import com.cunicella.fichaje.R
+import com.cunicella.fichaje.data.Privacy
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -64,6 +68,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         com.cunicella.fichaje.data.Invites.init(this)
+        com.cunicella.fichaje.data.Privacy.init(this)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -143,6 +148,13 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
                 title = { Text(ui.snap?.settings?.company ?: "Fichaje", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp) },
                 expandedHeight = 52.dp,
                 actions = {
+                    IconButton(onClick = { Privacy.toggle() }) {
+                        Icon(
+                            painterResource(if (Privacy.hidden) R.drawable.ic_eye_off else R.drawable.ic_eye),
+                            contentDescription = if (Privacy.hidden) "Mostrar montos" else "Ocultar montos",
+                            tint = if (Privacy.hidden) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                        )
+                    }
                     if (isAdmin) IconButton(onClick = { configOpen = true }) { Icon(Icons.Filled.Settings, contentDescription = "Configuración") }
                     IconButton(onClick = { accountOpen = true }) { Avatar(ui.snap?.me?.initials ?: "?") }
                     IconButton(onClick = signOut) { Icon(Icons.Filled.ExitToApp, contentDescription = "Cerrar sesión") }
