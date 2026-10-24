@@ -61,7 +61,7 @@ import com.cunicella.fichaje.data.Shift
 import com.cunicella.fichaje.data.Store
 import kotlinx.datetime.Instant
 
-private enum class HiView(val label: String) { Jornadas("Jornadas"), Movimientos("Movimientos") }
+private enum class HiView(val label: String) { Jornadas("Jornadas"), Calendario("Calendario"), Movimientos("Movimientos") }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,6 +117,9 @@ fun HistorialScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
                     ListCard(items.size) { i -> ShiftRow(items[i], store, now, showPerson = person == null) { detail = items[i].id } }
                 }
             }
+        } else if (view == HiView.Calendario) {
+            val mine = store.shifts.filter { store.member(it.memberId) != null && (person == null || it.memberId == person) }
+            CalendarView(mine, store, now, showPerson = person == null) { detail = it }
         } else {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Chip("Todo", cat == null) { cat = null }
@@ -201,6 +204,9 @@ internal fun ShiftRow(s: Shift, store: Store, now: Instant, showPerson: Boolean,
                 if (open) Tag("Abierta", sc.on, sc.onBg)
                 if (s.manual) Tag("Manual", sc.muted, MaterialTheme.colorScheme.surfaceVariant)
                 if (s.holiday) Tag("Feriado", sc.warn, sc.warnBg)
+            }
+            s.note?.takeIf { it.isNotBlank() }?.let {
+                Text("“$it”", color = sc.muted, fontSize = 12.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
         Column(horizontalAlignment = Alignment.End) {

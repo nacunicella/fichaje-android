@@ -80,6 +80,7 @@ object Repo {
             set("start_at", d.start.toString())
             set("end_at", d.end?.toString())
             set<Double?>("hours", null)
+            set("note", d.note?.trim()?.ifBlank { null })
             if (d.end != null && shift.rate == null) set("rate", rate)
         }) { filter { eq("id", shift.id) } }
         val keep = d.pauses.mapNotNull { it.id }.toSet()
@@ -225,7 +226,7 @@ data class Snapshot(
 /** Lo que se está editando de una jornada. Pausas sin id = nuevas. */
 data class PauseDraft(val id: String?, val start: Instant, val end: Instant?)
 
-data class ShiftDraft(val start: Instant, val end: Instant?, val pauses: List<PauseDraft>) {
+data class ShiftDraft(val start: Instant, val end: Instant?, val pauses: List<PauseDraft>, val note: String? = null) {
     /** Mismas reglas que el prototipo. Devuelve el error a mostrar, o null si está bien. */
     fun problem(open: Boolean, now: Instant): String? {
         if (end == null && !open) return "Falta la hora de salida."
@@ -243,11 +244,11 @@ data class ShiftDraft(val start: Instant, val end: Instant?, val pauses: List<Pa
     }
 
     fun asShift(base: Shift): Shift = base.copy(
-        startAt = start, endAt = end, hours = null,
+        startAt = start, endAt = end, hours = null, note = note,
         pauses = pauses.map { Pause(it.id ?: "", base.id, it.start, it.end) },
     )
 
     companion object {
-        fun of(s: Shift) = ShiftDraft(s.startAt, s.endAt, s.pauses.sortedBy { it.startAt }.map { PauseDraft(it.id, it.startAt, it.endAt) })
+        fun of(s: Shift) = ShiftDraft(s.startAt, s.endAt, s.pauses.sortedBy { it.startAt }.map { PauseDraft(it.id, it.startAt, it.endAt) }, s.note)
     }
 }
