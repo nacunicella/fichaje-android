@@ -23,6 +23,9 @@ data class Member(
     val rate: Double? = null,
     val active: Boolean = true,
     val role: String = "member",
+    @SerialName("user_id") val userId: String? = null,
+    @SerialName("invite_code") val inviteCode: String? = null,
+    @SerialName("deleted_at") val deletedAt: Instant? = null,
 ) {
     val name: String get() = listOf(firstName, lastName).filter { it.isNotBlank() }.joinToString(" ").ifBlank { "Sin nombre" }
     val shortName: String get() = firstName.ifBlank { "Sin nombre" }
@@ -50,6 +53,7 @@ data class Shift(
     val note: String? = null,
     val rate: Double? = null,
     @SerialName("payment_id") val paymentId: String? = null,
+    @SerialName("deleted_at") val deletedAt: Instant? = null,
     val pauses: List<Pause> = emptyList(),
 )
 
@@ -75,6 +79,7 @@ data class Payment(
     val amount: Double,
     @SerialName("worked_seconds") val workedSeconds: Long,
     @SerialName("shift_count") val shiftCount: Int,
+    @SerialName("deleted_at") val deletedAt: Instant? = null,
 )
 
 @Serializable

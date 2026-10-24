@@ -64,6 +64,12 @@ object Audit {
                     }
                 }
                 "update" -> {
+                    val trashed = o.str("deleted_at") == null && n.str("deleted_at") != null
+                    val restored = o.str("deleted_at") != null && n.str("deleted_at") == null
+                    if (trashed || restored) {
+                        val t = (if (trashed) "Mandó a la papelera" else "Restauró") + " la jornada del ${n.time("start_at")?.let { Dates.short(it) }}"
+                        return AuditItem(r.id, r.at, AuditCat.Edicion, t, ch, r.actorMember, r.memberId)
+                    }
                     val closed = o.time("end_at") == null && n.time("end_at") != null && o.str("start_at") == n.str("start_at")
                     val onlyHoliday = o.bool("holiday") != n.bool("holiday") &&
                         o.str("start_at") == n.str("start_at") && o.str("end_at") == n.str("end_at") && o.str("payment_id") == n.str("payment_id")
@@ -116,7 +122,11 @@ object Audit {
                 text = when (r.action) {
                     "insert" -> "Registró un cobro de ${money(n.num("amount"), st)}"
                     "delete" -> "Deshizo el cobro de ${money(o.num("amount"), st)} del ${o.time("paid_at")?.let { Dates.short(it) }}"
-                    else -> "Cambió un cobro"
+                    else -> when {
+                        o.str("deleted_at") == null && n.str("deleted_at") != null -> "Deshizo el cobro de ${money(n.num("amount"), st)} del ${n.time("paid_at")?.let { Dates.short(it) }} (papelera)"
+                        o.str("deleted_at") != null && n.str("deleted_at") == null -> "Restauró el cobro de ${money(n.num("amount"), st)} del ${n.time("paid_at")?.let { Dates.short(it) }}"
+                        else -> "Cambió un cobro"
+                    }
                 }
             }
             "members" -> {
@@ -125,7 +135,11 @@ object Audit {
                 text = when (r.action) {
                     "insert" -> "Agregó a ${name(n)} al equipo (${rateTxt(n.num("rate"), st)})"
                     "delete" -> "Eliminó a ${name(o)} del equipo"
-                    else -> {
+                    else -> if (o.str("deleted_at") == null && n.str("deleted_at") != null) "Mandó a ${name(n)} a la papelera"
+                    else if (o.str("deleted_at") != null && n.str("deleted_at") == null) "Restauró a ${name(n)} en el equipo"
+                    else if (o.str("invite_code") != n.str("invite_code") && o.str("user_id") == n.str("user_id")) {
+                        if (n.str("invite_code") != null) "Generó un código de invitación para ${name(n)}" else "Canceló la invitación de ${name(n)}"
+                    } else {
                         if (o.str("user_id") == null && n.str("user_id") != null && name(o) == name(n)) {
                             "${name(n)} entró por primera vez con su cuenta"
                         } else {

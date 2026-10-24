@@ -20,6 +20,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.minus
@@ -79,6 +83,7 @@ fun HistorialScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
     var cat by rememberSaveable { mutableStateOf<AuditCat?>(null) }
     var detail by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var trashOpen by remember { mutableStateOf(false) }
     val cur = store.settings.currency
     if (person != null && store.member(person) == null) person = null
 
@@ -90,8 +95,12 @@ fun HistorialScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Segmented(HiView.entries, view, { it.label }, Modifier.weight(1f)) { view = it }
+            IconButton(onClick = { trashOpen = true }, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Filled.Delete, contentDescription = "Papelera", tint = sc.muted)
+            }
             AddButton("Agregar jornada") { adding = true }
         }
+        if (trashOpen) TrashSheet(store, vm, onDismiss = { trashOpen = false })
         StatusLine(ui.error, null)
         val pickable = store.members.sortedWith(compareByDescending<com.cunicella.fichaje.data.Member> { it.active }.thenBy { it.firstName })
         PersonPicker(pickable, person, store.me?.id, allLabel = "Todo el equipo") { person = it }

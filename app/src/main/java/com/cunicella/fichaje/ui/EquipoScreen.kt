@@ -17,6 +17,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.cunicella.fichaje.data.Invites
+import com.cunicella.fichaje.data.Supa
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -198,23 +207,22 @@ internal fun MemberSheet(member: Member?, store: Store, vm: DataViewModel, onDis
                     }
                 }
             }
+            if (member != null && member.userId == null) InviteBlock(member, store, vm)
             if (member != null && !isMe) {
-                if (shiftCount > 0) {
-                    Text(
-                        "Tiene $shiftCount jornada${if (shiftCount == 1) "" else "s"} registrada${if (shiftCount == 1) "" else "s"}. Para que no aparezca más, apagá \"Activo en el equipo\".",
-                        color = LocalStateColors.current.muted, fontSize = 12.5.sp,
-                    )
-                } else {
-                    OutlinedButton(
-                        onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth().height(46.dp), shape = RoundedCornerShape(12.dp),
-                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    ) { Text("Eliminar del equipo") }
-                }
+                OutlinedButton(
+                    onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth().height(46.dp), shape = RoundedCornerShape(12.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                ) { Text("Eliminar del equipo") }
+                Text(
+                    (if (shiftCount > 0) "Tiene $shiftCount jornada${if (shiftCount == 1) "" else "s"} registrada${if (shiftCount == 1) "" else "s"}. " else "") +
+                        "Va a la papelera: se puede restaurar durante 30 días desde Historial.",
+                    color = LocalStateColors.current.muted, fontSize = 12.5.sp,
+                )
             }
         }
     }
     if (confirmDelete && member != null) {
-        Confirm("Eliminar a ${member.name}", "Se quita del equipo. No se puede deshacer.", "Sí, eliminar", onConfirm = {
+        Confirm("Eliminar a ${member.name}", "Se quita del equipo y va a la papelera. Se puede restaurar durante 30 días.", "Sí, eliminar", onConfirm = {
             confirmDelete = false
             vm.run("Integrante eliminado") { Repo.deleteMember(member.id) }
             onDismiss()
@@ -230,5 +238,50 @@ internal fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true,
             sub?.let { Text(it, color = LocalStateColors.current.muted, fontSize = 12.sp) }
         }
         Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+    }
+}
+
+/** Invitación por código para un integrante que todavía no entró con su cuenta. */
+@Composable
+private fun InviteBlock(member: com.cunicella.fichaje.data.Member, store: Store, vm: DataViewModel) {
+    val sc = LocalStateColors.current
+    val context = LocalContext.current
+    var code by remember(member.id) { mutableStateOf(member.inviteCode) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    fun share(c: String) {
+        val text = Invites.shareText(store.settings.company, member.shortName, c)
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+        context.startActivity(Intent.createChooser(send, "Invitar a ${member.shortName}"))
+    }
+    Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Todavía no entró con su cuenta", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            val c = code
+            if (c != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(c, fontFamily = Mono, fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, letterSpacing = 3.sp)
+                    Spacer(Modifier.weight(1f))
+                    Button(onClick = { share(c) }, shape = RoundedCornerShape(10.dp)) { Text("Compartir") }
+                }
+                Text("Con este código se registra con su email y contraseña y queda vinculado.", color = sc.muted, fontSize = 12.sp)
+            } else if (store.isAdmin) {
+                Text("Generá un código y mandáselo: se registra solo, sin que cargues su email.", color = sc.muted, fontSize = 12.5.sp)
+                OutlinedButton(
+                    onClick = {
+                        busy = true; error = null
+                        scope.launch {
+                            runCatching { Repo.newInvite(member.id) }
+                                .onSuccess { code = it; vm.refresh(quiet = true) }
+                                .onFailure { error = Supa.friendly(it) }
+                            busy = false
+                        }
+                    },
+                    enabled = !busy, modifier = Modifier.fillMaxWidth().height(44.dp), shape = RoundedCornerShape(12.dp),
+                ) { Text(if (busy) "Generando…" else "Generar código de invitación") }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.5.sp) }
+            }
+        }
     }
 }

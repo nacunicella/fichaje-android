@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cunicella.fichaje.data.Invites
 import com.cunicella.fichaje.data.Supa
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
@@ -59,6 +60,8 @@ fun LoginScreen() {
     var password by rememberSaveable { mutableStateOf("") }
     var showPass by rememberSaveable { mutableStateOf(false) }
     var creating by rememberSaveable { mutableStateOf(false) }
+    var invite by rememberSaveable { mutableStateOf(false) }
+    var code by rememberSaveable { mutableStateOf("") }
     var msg by rememberSaveable { mutableStateOf<String?>(null) }
     var info by rememberSaveable { mutableStateOf<String?>(null) }
     var busy by rememberSaveable { mutableStateOf(false) }
@@ -70,12 +73,30 @@ fun LoginScreen() {
             msg = "Poné tu email y una contraseña de al menos 6 caracteres."
             return
         }
+        if (invite && code.trim().length < 6) {
+            msg = "El código tiene 6 letras o números."
+            return
+        }
         busy = true
         msg = null
         info = null
         scope.launch {
             runCatching {
-                if (creating) {
+                if (invite) {
+                    // Guardamos el código: se canjea apenas haya sesión (aunque la confirmación por mail demore).
+                    Invites.set(code)
+                    Supa.client.auth.signUpWith(Email) {
+                        this.email = email
+                        this.password = password
+                    }
+                    if (Supa.client.auth.currentSessionOrNull() == null) {
+                        runCatching { Supa.client.auth.signInWith(Email) { this.email = email; this.password = password } }
+                    }
+                    if (Supa.client.auth.currentSessionOrNull() == null) {
+                        info = "Cuenta creada. Si te llega un mail de confirmación, abrilo y después entrá: el código queda guardado."
+                        invite = false
+                    }
+                } else if (creating) {
                     Supa.client.auth.signUpWith(Email) {
                         this.email = email
                         this.password = password
@@ -89,7 +110,7 @@ fun LoginScreen() {
                     }
                 }
             }.onFailure {
-                msg = if (creating) "No se pudo crear la cuenta. ¿Ya tenés una con ese email?"
+                msg = if (creating || invite) "No se pudo crear la cuenta. ¿Ya tenés una con ese email?"
                 else "Email o contraseña incorrectos."
             }
             busy = false
@@ -113,13 +134,21 @@ fun LoginScreen() {
         ) {
             ClockMark()
             Spacer(Modifier.height(4.dp))
-            Text(if (creating) "Crear cuenta" else "Fichaje", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+            Text(if (invite) "Sumarme al equipo" else if (creating) "Crear cuenta" else "Fichaje", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
             Text(
-                if (creating) "Usá el email con el que te cargaron en el equipo."
+                if (invite) "Poné el código que te pasaron, tu email y una contraseña."
+                else if (creating) "Usá el email con el que te cargaron en el equipo."
                 else "Entrá para fichar tus horas.",
                 color = cs.onSurfaceVariant, fontSize = 15.sp,
             )
             Spacer(Modifier.height(6.dp))
+            if (invite) OutlinedTextField(
+                value = code, onValueChange = { code = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(6) },
+                label = { Text("Código de invitación") }, singleLine = true,
+                shape = RoundedCornerShape(12.dp), colors = fieldColors,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next),
+                modifier = Modifier.fillMaxWidth(),
+            )
             OutlinedTextField(
                 value = email, onValueChange = { email = it.trim() }, label = { Text("Email") }, singleLine = true,
                 shape = RoundedCornerShape(12.dp), colors = fieldColors,
@@ -147,13 +176,16 @@ fun LoginScreen() {
                 colors = ButtonDefaults.buttonColors(containerColor = cs.primary, contentColor = cs.onPrimary),
             ) {
                 if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = cs.onPrimary, strokeWidth = 2.dp)
-                else Text(if (creating) "Crear cuenta" else "Entrar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                else Text(if (invite) "Sumarme" else if (creating) "Crear cuenta" else "Entrar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                Text(if (creating) "¿Ya tenés cuenta?" else "¿Es tu primera vez?", color = cs.onSurfaceVariant, fontSize = 14.sp)
-                TextButton(onClick = { creating = !creating; msg = null; info = null }) {
-                    Text(if (creating) "Entrar" else "Crear cuenta", fontWeight = FontWeight.SemiBold)
+                Text(if (creating || invite) "¿Ya tenés cuenta?" else "¿Es tu primera vez?", color = cs.onSurfaceVariant, fontSize = 14.sp)
+                TextButton(onClick = { creating = !(creating || invite); invite = false; msg = null; info = null }) {
+                    Text(if (creating || invite) "Entrar" else "Crear cuenta", fontWeight = FontWeight.SemiBold)
                 }
+            }
+            if (!invite) TextButton(onClick = { invite = true; creating = false; msg = null; info = null }, modifier = Modifier.fillMaxWidth()) {
+                Text("Tengo un código de invitación", fontWeight = FontWeight.SemiBold)
             }
         }
     }

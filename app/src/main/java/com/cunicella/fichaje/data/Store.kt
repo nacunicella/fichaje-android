@@ -35,6 +35,7 @@ data class Store(
     companion object {
         suspend fun load(): Store = coroutineScope {
             if (!Supa.ensureSession()) throw Supa.NoSession()
+            Repo.purgeTrash()
             val meQ = async { Repo.me() }
             val settingsQ = async { Repo.settings() }
             val membersQ = async { Repo.allMembers() }
