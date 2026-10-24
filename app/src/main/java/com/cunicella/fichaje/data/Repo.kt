@@ -74,6 +74,10 @@ object Repo {
         return true
     }
 
+    suspend fun setNote(shiftId: String, note: String?) {
+        db.from("shifts").update({ set("note", note?.trim()?.ifBlank { null }) }) { filter { eq("id", shiftId) } }
+    }
+
     /** Guarda lo que se cambió en el editor de jornada: entrada, salida y pausas. */
     suspend fun saveEdit(shift: Shift, d: ShiftDraft, rate: Double) {
         db.from("shifts").update({

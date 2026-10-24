@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -73,6 +74,8 @@ data class HoyUi(
     val toast: String? = null,
     val holidayNext: Boolean = false,
     val editing: String? = null,
+    /** Jornada recién terminada a la que se le puede dejar una nota. */
+    val noteFor: String? = null,
 )
 
 /** Aplica un cambio a una jornada mía en la foto local, para que la pantalla responda al instante. */
@@ -156,9 +159,21 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
     fun stop() {
         val now = Clock.System.now()
         act("Jornada terminada", optimistic = { s -> s.mapShift(s.myOpen!!.id) { it.closePauses(now).copy(endAt = now) } }) { s ->
-            val saved = Repo.stop(s.myOpen!!, Calc.currentRate(s.me, s.settings), now)
-            if (saved) null else "Jornada de menos de un minuto: no se guardó"
+            val open = s.myOpen!!
+            val saved = Repo.stop(open, Calc.currentRate(s.me, s.settings), now)
+            if (saved) {
+                _ui.update { it.copy(noteFor = open.id) }
+                null
+            } else "Jornada de menos de un minuto: no se guardó"
         }
+    }
+
+    fun dismissNote() = _ui.update { it.copy(noteFor = null) }
+
+    fun saveNote(id: String, note: String) {
+        _ui.update { it.copy(noteFor = null) }
+        if (note.isBlank()) return
+        act("Nota guardada", optimistic = { s -> s.mapShift(id) { it.copy(note = note.trim()) } }) { Repo.setNote(id, note); null }
     }
 
     fun setHoliday(v: Boolean) {
@@ -222,6 +237,25 @@ fun HoyScreen(vm: HoyViewModel) {
         ui.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         ui.toast?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp) }
         NowCard(snap, now)
+    }
+    ui.noteFor?.let { id -> NoteSheet(onSkip = { vm.dismissNote() }) { vm.saveNote(id, it) } }
+}
+
+/** Al terminar el turno: una nota opcional, sin pasar por el editor. */
+@Composable
+private fun NoteSheet(onSkip: () -> Unit, onSave: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    Sheet("Jornada terminada", onSkip) {
+        Text("¿Querés dejar una nota? Es opcional.", color = LocalStateColors.current.muted, fontSize = 13.5.sp)
+        OutlinedTextField(
+            text, { text = it.take(200) }, Modifier.fillMaxWidth(),
+            label = { Text("Nota") }, placeholder = { Text("Qué se hizo, dónde, con quién…") },
+            minLines = 2, maxLines = 4,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onSkip, modifier = Modifier.weight(1f).height(46.dp), shape = RoundedCornerShape(12.dp)) { Text("Omitir") }
+            Button(onClick = { onSave(text) }, enabled = text.isNotBlank(), modifier = Modifier.weight(1f).height(46.dp), shape = RoundedCornerShape(12.dp)) { Text("Guardar nota") }
+        }
     }
 }
 
