@@ -6,6 +6,10 @@ import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.datetime.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.datetime.Instant
@@ -17,14 +21,20 @@ object Repo {
 
     suspend fun me(): Member? {
         val uid = db.auth.currentUserOrNull()?.id ?: return null
-        return db.from("members").select { filter { eq("user_id", uid) } }.decodeSingleOrNull()
+        val me: Member? = db.from("members").select { filter { eq("user_id", uid); exact("deleted_at", null) } }.decodeSingleOrNull()
+        if (me != null) return me
+        // Si entró con un código de invitación, lo canjeamos ahora que hay sesión.
+        val code = Invites.pending() ?: return null
+        val ok = runCatching { claimInvite(code) }.getOrDefault(false)
+        if (ok) Invites.clear()
+        return if (ok) db.from("members").select { filter { eq("user_id", uid); exact("deleted_at", null) } }.decodeSingleOrNull() else null
     }
 
     suspend fun settings(): Settings = db.from("settings").select().decodeSingle()
 
     suspend fun activeMembers(): List<Member> =
         db.from("members").select {
-            filter { eq("active", true) }
+            filter { eq("active", true); exact("deleted_at", null) }
             order("first_name", Order.ASCENDING)
         }.decodeList()
 
@@ -33,6 +43,7 @@ object Repo {
             filter {
                 exact("end_at", null)
                 exact("hours", null)
+                exact("deleted_at", null)
             }
         }.decodeList()
 
@@ -41,6 +52,7 @@ object Repo {
             filter {
                 eq("member_id", memberId)
                 gte("start_at", since.toString())
+                exact("deleted_at", null)
             }
             order("start_at", Order.ASCENDING)
         }.decodeList()
@@ -107,7 +119,7 @@ object Repo {
     // ------------------------------------------------------------ equipo, historial, cobros
 
     suspend fun allMembers(): List<Member> =
-        db.from("members").select { order("first_name", Order.ASCENDING) }.decodeList()
+        db.from("members").select { filter { exact("deleted_at", null) }; order("first_name", Order.ASCENDING) }.decodeList()
 
     /** Todas las jornadas con sus pausas. PostgREST corta en 1000 filas, así que se pide por páginas. */
     suspend fun allShifts(): List<Shift> {
@@ -116,6 +128,7 @@ object Repo {
         var from = 0L
         while (true) {
             val chunk: List<Shift> = db.from("shifts").select(withPauses) {
+                filter { exact("deleted_at", null) }
                 order("start_at", Order.DESCENDING)
                 range(from, from + page - 1)
             }.decodeList()
@@ -127,7 +140,7 @@ object Repo {
     }
 
     suspend fun payments(): List<Payment> =
-        db.from("payments").select { order("paid_at", Order.DESCENDING) }.decodeList()
+        db.from("payments").select { filter { exact("deleted_at", null) }; order("paid_at", Order.DESCENDING) }.decodeList()
 
     suspend fun audit(before: Instant?, limit: Long): List<AuditRow> =
         db.from("audit_log").select {
@@ -149,7 +162,8 @@ object Repo {
         }) { filter { eq("id", id) } }
     }
 
-    suspend fun deleteMember(id: String) { db.from("members").delete { filter { eq("id", id) } } }
+    /** A la papelera: se puede restaurar durante 30 días. */
+    suspend fun deleteMember(id: String) = trash("members", id)
 
     suspend fun addManual(s: ManualShift, pauseMinutes: Int) {
         val saved: Shift = db.from("shifts").insert(s) { select() }.decodeSingle()
@@ -162,7 +176,7 @@ object Repo {
         }
     }
 
-    suspend fun deleteShift(id: String) { db.from("shifts").delete { filter { eq("id", id) } } }
+    suspend fun deleteShift(id: String) = trash("shifts", id)
 
     /** Registra el cobro y marca esas jornadas como cobradas. */
     /** Registra un cobro por monto; lo que falte queda como saldo. worked_seconds guarda el equivalente en horas a la tarifa del momento. */
@@ -172,9 +186,35 @@ object Repo {
     }
 
     /** Deshace un cobro: el monto vuelve al saldo. */
-    suspend fun undoPay(paymentId: String) {
-        db.from("payments").delete { filter { eq("id", paymentId) } }
+    suspend fun undoPay(paymentId: String) = trash("payments", id = paymentId)
+
+    // ------------------------------------------------------------ papelera e invitaciones
+
+    private suspend fun trash(table: String, id: String) {
+        db.from(table).update({ set("deleted_at", Clock.System.now().toString()) }) { filter { eq("id", id) } }
     }
+
+    suspend fun restore(table: String, id: String) {
+        db.from(table).update({ set<String?>("deleted_at", null) }) { filter { eq("id", id) } }
+    }
+
+    data class Trash(val shifts: List<Shift>, val payments: List<Payment>, val members: List<Member>)
+
+    suspend fun trash(): Trash = coroutineScope {
+        val s = async { db.from("shifts").select(withPauses) { filter { filterNot("deleted_at", FilterOperator.IS, "null") }; order("deleted_at", Order.DESCENDING) }.decodeList<Shift>() }
+        val p = async { db.from("payments").select { filter { filterNot("deleted_at", FilterOperator.IS, "null") }; order("deleted_at", Order.DESCENDING) }.decodeList<Payment>() }
+        val m = async { db.from("members").select { filter { filterNot("deleted_at", FilterOperator.IS, "null") }; order("deleted_at", Order.DESCENDING) }.decodeList<Member>() }
+        Trash(s.await(), p.await(), m.await())
+    }
+
+    /** Borra de verdad lo que lleva más de 30 días en la papelera. Falla en silencio si la base todavía no tiene la función. */
+    suspend fun purgeTrash() { runCatching { db.postgrest.rpc("purge_trash") } }
+
+    suspend fun newInvite(memberId: String): String =
+        db.postgrest.rpc("new_invite", buildJsonObject { put("member", memberId) }).decodeAs<String>()
+
+    suspend fun claimInvite(code: String): Boolean =
+        db.postgrest.rpc("claim_invite", buildJsonObject { put("code", code.trim().uppercase()) }).decodeAs<Boolean>()
 
     suspend fun updateSettings(s: Settings) {
         db.from("settings").update({
