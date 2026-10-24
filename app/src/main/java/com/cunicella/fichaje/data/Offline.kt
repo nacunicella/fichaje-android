@@ -26,9 +26,10 @@ data class Op(
     val holiday: Boolean = false,
     val rate: Double = 0.0,
     val note: String? = null,
+    val edit: ShiftDraft? = null,  // para EDIT: cómo tiene que quedar la jornada
 ) {
     companion object {
-        const val START = "start"; const val PAUSE = "pause"; const val RESUME = "resume"; const val STOP = "stop"; const val NOTE = "note"
+        const val START = "start"; const val PAUSE = "pause"; const val RESUME = "resume"; const val STOP = "stop"; const val NOTE = "note"; const val EDIT = "edit"
         fun localId() = "local-" + UUID.randomUUID().toString()
     }
 }
@@ -50,6 +51,7 @@ fun Snapshot.apply(op: Op): Snapshot = when (op.kind) {
     Op.RESUME -> mapShift(op.shiftId!!) { it.closePauses(op.at) }
     Op.STOP -> mapShift(op.shiftId!!) { it.closePauses(op.at).copy(endAt = op.at, rate = op.rate.takeIf { r -> r > 0 }) }
     Op.NOTE -> mapShift(op.shiftId!!) { it.copy(note = op.note) }
+    Op.EDIT -> mapShift(op.shiftId!!) { op.edit!!.asShift(it) }
     else -> this
 }
 
@@ -102,6 +104,12 @@ object Offline {
         val base = prefs?.getString("snap", null)?.let { runCatching { json.decodeFromString(Snapshot.serializer(), it) }.getOrNull() } ?: return null
         return pending().fold(base) { s, op -> s.apply(op) }
     }
+
+    /** Última carga completa de Equipo/Historial/Cobrar, para mostrarla sin señal (solo lectura). */
+    fun cacheStore(s: Store) {
+        prefs?.edit()?.putString("store", runCatching { json.encodeToString(Store.serializer(), s) }.getOrNull())?.apply()
+    }
+    fun localStore(): Store? = prefs?.getString("store", null)?.let { runCatching { json.decodeFromString(Store.serializer(), it) }.getOrNull() }
 
     // ---- red
 
@@ -164,6 +172,7 @@ object Offline {
             Op.RESUME -> Repo.resume(id!!, op.at)
             Op.STOP -> Repo.stopById(id!!, op.rate, op.at)
             Op.NOTE -> Repo.setNote(id!!, op.note)
+            Op.EDIT -> Repo.saveEditById(id!!, op.edit!!, op.rate)
         }
     }
 }

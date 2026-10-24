@@ -215,10 +215,8 @@ class HoyViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveEdit(shift: Shift, d: ShiftDraft) {
         _ui.update { it.copy(editing = null) }
-        act("Jornada actualizada", optimistic = { s -> s.mapShift(shift.id) { d.asShift(it) } }) { s ->
-            Repo.saveEdit(shift, d, Calc.currentRate(s.me, s.settings))
-            null
-        }
+        val snap = _ui.value.snap ?: return
+        fichar(Op(kind = Op.EDIT, at = Clock.System.now(), memberId = shift.memberId, shiftId = shift.id, rate = Calc.currentRate(snap.me, snap.settings), edit = d), "Jornada actualizada")
     }
 }
 
@@ -330,7 +328,7 @@ private fun ClockCard(ui: HoyUi, snap: Snapshot, now: kotlinx.datetime.Instant, 
                 color = sc.muted, fontSize = 13.sp,
             )
             // la jornada que editan los lápices: la abierta o la última de hoy
-            val editable = (open ?: snap.mineToday.filter { it.hours == null }.maxByOrNull { it.startAt })?.takeIf { !it.id.startsWith("local") }
+            val editable = (open ?: snap.mineToday.filter { it.hours == null }.maxByOrNull { it.startAt })
             val onEdit: (() -> Unit)? = editable?.let { e -> { vm.edit(e.id) } }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Fact("Generado", Calc.money(stats.earned, snap.settings.currency), Modifier.weight(1f))

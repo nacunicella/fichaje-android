@@ -37,6 +37,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.background
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -68,7 +69,16 @@ internal fun WithStore(vm: DataViewModel, content: @Composable (DataUi, Store) -
         }
         return
     }
-    content(ui, store)
+    Column(Modifier.fillMaxSize()) {
+        if (ui.offline) {
+            Text(
+                "Sin conexión: se muestra lo guardado en el teléfono. Para cambiar algo hay que esperar la señal.",
+                Modifier.fillMaxWidth().background(LocalStateColors.current.warn.copy(alpha = 0.15f)).padding(horizontal = 16.dp, vertical = 8.dp),
+                color = LocalStateColors.current.warn, fontSize = 13.sp,
+            )
+        }
+        Box(Modifier.weight(1f)) { content(ui, store) }
+    }
 }
 
 @Composable

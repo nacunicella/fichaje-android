@@ -15,8 +15,10 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.toJavaLocalDate
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.todayIn
+import kotlinx.serialization.Serializable
 
 /** Todo lo que necesitan Equipo, Historial y Cobrar: se carga de una y se filtra en el teléfono. */
+@Serializable
 data class Store(
     val me: Member?,
     val settings: Settings,
@@ -42,7 +44,17 @@ data class Store(
             val membersQ = async { Repo.allMembers() }
             val shiftsQ = async { Repo.allShifts() }
             val paymentsQ = async { Repo.payments() }
-            Store(meQ.await(), settingsQ.await(), membersQ.await(), shiftsQ.await(), paymentsQ.await())
+            Store(meQ.await(), settingsQ.await(), membersQ.await(), shiftsQ.await(), paymentsQ.await()).also { Offline.cacheStore(it) }
+        }
+
+        /** Del servidor; si no hay señal, la última carga guardada en el teléfono (true = local). */
+        suspend fun loadOrLocal(): Pair<Store, Boolean> {
+            val r = runCatching { load() }
+            r.getOrNull()?.let { return it to false }
+            val e = r.exceptionOrNull()!!
+            if (!Offline.isNetError(e)) throw e
+            Offline.offline.value = true
+            return (Offline.localStore() ?: throw e) to true
         }
     }
 }

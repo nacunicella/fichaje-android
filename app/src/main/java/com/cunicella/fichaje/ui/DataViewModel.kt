@@ -32,6 +32,7 @@ data class DataUi(
     val audit: List<AuditItem> = emptyList(),
     val auditLoading: Boolean = false,
     val auditDone: Boolean = false,
+    val offline: Boolean = false,   // se muestra lo guardado en el teléfono; no se puede cambiar nada
 )
 
 /** Datos de Equipo, Historial y Cobrar. Hoy tiene su propio modelo, más liviano, para el reloj. */
@@ -46,8 +47,8 @@ class DataViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refresh(quiet: Boolean = false) = viewModelScope.launch {
         if (!quiet) _ui.update { it.copy(error = null) }
-        runCatching { Store.load() }
-            .onSuccess { s -> _ui.update { it.copy(loading = false, store = s, error = null) } }
+        runCatching { Store.loadOrLocal() }
+            .onSuccess { (s, local) -> _ui.update { it.copy(loading = false, store = s, error = null, offline = local) } }
             .onFailure { e -> _ui.update { it.copy(loading = false, error = if (quiet && it.store != null) it.error else "No se pudo cargar. ${Supa.friendly(e)}") } }
         if (_ui.value.audit.isNotEmpty()) loadAudit(reset = true)
     }
@@ -56,17 +57,19 @@ class DataViewModel(app: Application) : AndroidViewModel(app) {
     fun run(done: String? = null, block: suspend (Store) -> Unit) {
         val store = _ui.value.store ?: return
         if (_ui.value.busy) return
+        if (_ui.value.offline) { _ui.update { it.copy(error = "Sin conexión: esto se puede cambiar cuando vuelva la señal.") }; return }
         _ui.update { it.copy(busy = true, error = null, toast = null) }
         viewModelScope.launch {
             val result = runCatching {
                 if (!Supa.ensureSession()) throw Supa.NoSession()
                 block(store)
             }
-            val fresh = runCatching { Store.load() }.getOrNull()
+            val fresh = runCatching { Store.loadOrLocal() }.getOrNull()
             _ui.update {
                 it.copy(
                     busy = false,
-                    store = fresh ?: it.store,
+                    store = fresh?.first ?: it.store,
+                    offline = fresh?.second ?: it.offline,
                     error = result.exceptionOrNull()?.let { e -> "No se pudo guardar. ${Supa.friendly(e)}" },
                     toast = if (result.isSuccess) done else null,
                 )
