@@ -23,7 +23,6 @@ data class Member(
     val rate: Double? = null,
     val active: Boolean = true,
     val role: String = "member",
-    @SerialName("user_id") val userId: String? = null,
     @SerialName("invite_code") val inviteCode: String? = null,
     @SerialName("deleted_at") val deletedAt: Instant? = null,
 ) {
