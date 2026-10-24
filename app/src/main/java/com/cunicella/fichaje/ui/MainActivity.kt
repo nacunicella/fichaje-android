@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         com.cunicella.fichaje.data.Invites.init(this)
         com.cunicella.fichaje.data.Privacy.init(this)
+        com.cunicella.fichaje.data.Offline.init(this)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -106,10 +107,17 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
     val ui by hoy.ui.collectAsStateWithLifecycle()
     val dataUi by data.ui.collectAsStateWithLifecycle()
     // al volver a la app (p. ej. después de fichar desde el widget) se recarga
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     LifecycleResumeEffect(Unit) {
         hoy.refresh()
         data.refresh(quiet = true)
-        onPauseOrDispose { }
+        // cuando vuelve la señal, se manda lo que quedó en cola
+        val cm = appContext.getSystemService(android.net.ConnectivityManager::class.java)
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) { hoy.refresh(); data.refresh(quiet = true) }
+        }
+        runCatching { cm?.registerDefaultNetworkCallback(cb) }
+        onPauseOrDispose { runCatching { cm?.unregisterNetworkCallback(cb) } }
     }
     var configOpen by rememberSaveable { mutableStateOf(false) }
     var profileOpen by rememberSaveable { mutableStateOf(false) }

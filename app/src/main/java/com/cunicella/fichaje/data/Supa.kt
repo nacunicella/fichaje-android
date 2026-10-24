@@ -18,6 +18,7 @@ import kotlinx.datetime.Clock
 object Supa {
     val client: SupabaseClient by lazy {
         createSupabaseClient(BuildConfig.SUPABASE_URL, BuildConfig.SUPABASE_ANON_KEY) {
+            requestTimeout = 15.seconds
             install(Auth)
             install(Postgrest)
         }
