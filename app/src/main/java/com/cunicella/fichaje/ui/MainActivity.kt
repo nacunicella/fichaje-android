@@ -47,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -183,12 +184,18 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) { pad ->
-        Box(Modifier.padding(pad)) {
-            when (tab) {
-                Tab.Hoy -> HoyScreen(hoy)
-                Tab.Equipo -> EquipoScreen(data)
-                Tab.Historial -> HistorialScreen(data)
-                Tab.Cobrar -> CobrarScreen(data)
+        val offline = ui.offline || dataUi.offline
+        Column(Modifier.padding(pad)) {
+            if (offline) OfflineBar(ui.pending)
+            CompositionLocalProvider(LocalReadOnly provides dataUi.offline) {
+                Box(Modifier.weight(1f)) {
+                    when (tab) {
+                        Tab.Hoy -> HoyScreen(hoy)
+                        Tab.Equipo -> EquipoScreen(data)
+                        Tab.Historial -> HistorialScreen(data)
+                        Tab.Cobrar -> CobrarScreen(data)
+                    }
+                }
             }
         }
     }

@@ -57,7 +57,7 @@ class DataViewModel(app: Application) : AndroidViewModel(app) {
     fun run(done: String? = null, block: suspend (Store) -> Unit) {
         val store = _ui.value.store ?: return
         if (_ui.value.busy) return
-        if (_ui.value.offline) { _ui.update { it.copy(error = "Sin conexión: esto se puede cambiar cuando vuelva la señal.") }; return }
+        if (_ui.value.offline) { _ui.update { it.copy(toast = "Sin conexión: se puede cambiar cuando vuelva la señal.") }; return }
         _ui.update { it.copy(busy = true, error = null, toast = null) }
         viewModelScope.launch {
             val result = runCatching {

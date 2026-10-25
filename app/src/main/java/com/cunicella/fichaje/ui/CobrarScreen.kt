@@ -193,7 +193,7 @@ private fun PaymentSheet(p: Payment, store: Store, vm: DataViewModel, onDismiss:
         KV("Medio de pago", PayMethod.label(p.method))
         KV("Equivale a", "≈ ${Calc.dur(p.workedSeconds * 1000)}")
         OutlinedButton(
-            onClick = { confirm = true }, modifier = Modifier.fillMaxWidth().height(46.dp), shape = RoundedCornerShape(12.dp),
+            onClick = { confirm = true }, enabled = !LocalReadOnly.current, modifier = Modifier.fillMaxWidth().height(46.dp), shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
         ) { Text("Deshacer este cobro") }
         Text("El monto vuelve al saldo pendiente.", color = LocalStateColors.current.muted, fontSize = 12.5.sp)
