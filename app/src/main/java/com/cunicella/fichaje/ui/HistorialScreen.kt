@@ -95,8 +95,8 @@ fun HistorialScreen(vm: DataViewModel) = WithStore(vm) { ui, store ->
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Segmented(HiView.entries, view, { it.label }, Modifier.weight(1f)) { view = it }
-            IconButton(onClick = { trashOpen = true }, modifier = Modifier.size(38.dp)) {
-                Icon(Icons.Filled.Delete, contentDescription = "Papelera", tint = sc.muted)
+            IconButton(onClick = { trashOpen = true }, enabled = !LocalReadOnly.current, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Filled.Delete, contentDescription = "Papelera", tint = if (LocalReadOnly.current) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f) else sc.muted)
             }
             AddButton("Agregar jornada") { adding = true }
         }
@@ -328,11 +328,11 @@ internal fun ShiftDetailSheet(s: Shift, store: Store, vm: DataViewModel, onDismi
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { editing = true }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(12.dp)) {
+                Button(onClick = { editing = true }, enabled = !LocalReadOnly.current, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(12.dp)) {
                     Text("Editar jornada", maxLines = 1, fontWeight = FontWeight.SemiBold)
                 }
                 OutlinedButton(
-                    onClick = { confirm = true }, modifier = Modifier.height(48.dp), shape = RoundedCornerShape(12.dp),
+                    onClick = { confirm = true }, enabled = !LocalReadOnly.current, modifier = Modifier.height(48.dp), shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 ) { Text("Eliminar", maxLines = 1) }
             }

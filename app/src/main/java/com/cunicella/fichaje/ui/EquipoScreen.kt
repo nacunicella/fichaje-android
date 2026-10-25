@@ -69,16 +69,7 @@ internal fun WithStore(vm: DataViewModel, content: @Composable (DataUi, Store) -
         }
         return
     }
-    Column(Modifier.fillMaxSize()) {
-        if (ui.offline) {
-            Text(
-                "Sin conexión: se muestra lo guardado en el teléfono. Para cambiar algo hay que esperar la señal.",
-                Modifier.fillMaxWidth().background(LocalStateColors.current.warn.copy(alpha = 0.15f)).padding(horizontal = 16.dp, vertical = 8.dp),
-                color = LocalStateColors.current.warn, fontSize = 13.sp,
-            )
-        }
-        Box(Modifier.weight(1f)) { content(ui, store) }
-    }
+    content(ui, store)
 }
 
 @Composable
@@ -220,7 +211,7 @@ internal fun MemberSheet(member: Member?, store: Store, vm: DataViewModel, onDis
             if (member != null && member.userId == null) InviteBlock(member, store, vm)
             if (member != null && !isMe) {
                 OutlinedButton(
-                    onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth().height(46.dp), shape = RoundedCornerShape(12.dp),
+                    onClick = { confirmDelete = true }, enabled = !LocalReadOnly.current, modifier = Modifier.fillMaxWidth().height(46.dp), shape = RoundedCornerShape(12.dp),
                     colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 ) { Text("Eliminar del equipo") }
                 Text(
@@ -288,7 +279,7 @@ private fun InviteBlock(member: com.cunicella.fichaje.data.Member, store: Store,
                             busy = false
                         }
                     },
-                    enabled = !busy, modifier = Modifier.fillMaxWidth().height(44.dp), shape = RoundedCornerShape(12.dp),
+                    enabled = !busy && !LocalReadOnly.current, modifier = Modifier.fillMaxWidth().height(44.dp), shape = RoundedCornerShape(12.dp),
                 ) { Text(if (busy) "Generando…" else "Generar código de invitación") }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.5.sp) }
             }

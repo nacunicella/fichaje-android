@@ -263,12 +263,8 @@ fun HoyScreen(vm: HoyViewModel) {
         }
         ui.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         ui.toast?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp) }
-        if (ui.offline || ui.pending > 0) {
-            Text(
-                (if (ui.offline) "Sin conexión: se muestra lo guardado en el teléfono" else "Sincronizando") +
-                    (if (ui.pending > 0) " · ${ui.pending} fichada${if (ui.pending == 1) "" else "s"} por mandar" else ""),
-                color = LocalStateColors.current.warn, fontSize = 13.sp,
-            )
+        if (!ui.offline && ui.pending > 0) {
+            Text("Sincronizando · ${ui.pending} fichada${if (ui.pending == 1) "" else "s"} por mandar", color = LocalStateColors.current.warn, fontSize = 13.sp)
         }
         NowCard(snap, now)
     }

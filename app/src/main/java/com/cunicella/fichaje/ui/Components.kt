@@ -274,7 +274,7 @@ internal fun Confirm(title: String, text: String, confirmLabel: String, danger: 
 /** Botón principal ancho, una sola línea. */
 @Composable
 internal fun BigButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
-    Button(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(12.dp)) {
+    Button(onClick = onClick, enabled = enabled && !LocalReadOnly.current, modifier = modifier.fillMaxWidth().height(50.dp), shape = RoundedCornerShape(12.dp)) {
         Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
@@ -282,10 +282,34 @@ internal fun BigButton(text: String, modifier: Modifier = Modifier, enabled: Boo
 /** Botón "+" compacto, con la acción en el contentDescription. */
 @Composable
 internal fun AddButton(description: String, onClick: () -> Unit) {
+    val enabled = !LocalReadOnly.current
+    val bg = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    val fg = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
     Box(
-        Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.primary).clickable(onClick = onClick),
+        Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(bg).clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Icon(Icons.Filled.Add, contentDescription = description, tint = MaterialTheme.colorScheme.onPrimary) }
+    ) { Icon(Icons.Filled.Add, contentDescription = description, tint = fg) }
+}
+
+/** true cuando no hay señal: se muestra lo guardado y lo que cambia datos queda deshabilitado. */
+internal val LocalReadOnly = androidx.compose.runtime.compositionLocalOf { false }
+
+/** Aviso único de sin conexión, chiquito, debajo de la barra de arriba. */
+@Composable
+internal fun OfflineBar(pending: Int) {
+    val sc = LocalStateColors.current
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(50)).background(sc.warnBg)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(androidx.compose.ui.res.painterResource(com.cunicella.fichaje.R.drawable.ic_cloud_off), contentDescription = null, tint = sc.warn, modifier = Modifier.size(16.dp))
+        Text(
+            "Sin conexión · solo lectura" + (if (pending > 0) " · $pending fichada${if (pending == 1) "" else "s"} por mandar" else ""),
+            color = sc.warn, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+        )
+    }
 }
 
 /** Etiqueta chica arriba de un campo. */
