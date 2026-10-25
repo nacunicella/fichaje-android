@@ -294,6 +294,20 @@ internal fun AddButton(description: String, onClick: () -> Unit) {
 /** true cuando no hay señal: se muestra lo guardado y lo que cambia datos queda deshabilitado. */
 internal val LocalReadOnly = androidx.compose.runtime.compositionLocalOf { false }
 
+/** Avisa al admin que está viendo la app como usuario normal; un toque vuelve. */
+@Composable
+internal fun PreviewBar(onBack: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.primaryContainer).clickable(onClick = onBack).padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Viendo como usuario normal", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text("Volver a admin", color = MaterialTheme.colorScheme.primary, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 /** Aviso único de sin conexión, chiquito, debajo de la barra de arriba. */
 @Composable
 internal fun OfflineBar(pending: Int) {

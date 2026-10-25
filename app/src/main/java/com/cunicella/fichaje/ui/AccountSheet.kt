@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cunicella.fichaje.data.Calc
 import com.cunicella.fichaje.data.Member
+import com.cunicella.fichaje.data.Preview
 import com.cunicella.fichaje.data.Settings
 import com.cunicella.fichaje.update.Updates
 import kotlinx.coroutines.launch
@@ -67,6 +68,7 @@ fun AccountSheet(
     onDismiss: () -> Unit,
     onEditProfile: (() -> Unit)? = null,
     onSettings: (() -> Unit)? = null,
+    onPreview: (() -> Unit)? = null,   // solo admin: alternar vista admin / usuario normal
 ) {
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
@@ -94,7 +96,7 @@ fun AccountSheet(
                 }
                 if (me?.isAdmin == true) {
                     Text(
-                        "Admin",
+                        if (Preview.asUser) "Vista usuario" else "Admin",
                         Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primaryContainer)
                             .padding(horizontal = 10.dp, vertical = 3.dp),
                         color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
@@ -113,6 +115,16 @@ fun AccountSheet(
                     if (onEditProfile != null) OutlinedButton(onClick = onEditProfile, modifier = Modifier.weight(1f).height(44.dp), shape = RoundedCornerShape(12.dp)) { Text("Mi perfil", maxLines = 1) }
                     if (onSettings != null) OutlinedButton(onClick = onSettings, modifier = Modifier.weight(1f).height(44.dp), shape = RoundedCornerShape(12.dp)) { Text("Configuración", maxLines = 1) }
                 }
+            }
+            if (onPreview != null) {
+                OutlinedButton(onClick = onPreview, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp)) {
+                    Text(if (Preview.asUser) "Volver a la vista de admin" else "Ver como usuario normal")
+                }
+                Text(
+                    if (Preview.asUser) "Estás viendo la app como la ve alguien del equipo. Tu rol no cambió."
+                    else "Para ver cómo le queda la app a alguien del equipo. No cambia tu rol.",
+                    color = muted, fontSize = 12.5.sp,
+                )
             }
             updateMsg?.let { Text(it, color = muted, fontSize = 13.sp) }
             OutlinedButton(
