@@ -27,7 +27,7 @@ data class Store(
     val payments: List<Payment>,
 ) {
     val active: List<Member> get() = members.filter { it.active }
-    val isAdmin: Boolean get() = me?.isAdmin == true
+    val isAdmin: Boolean get() = me?.isAdmin == true && !Preview.asUser
 
     fun member(id: String?): Member? = members.firstOrNull { it.id == id }
     fun nameOf(id: String?): String = member(id)?.name ?: "alguien que ya no está"

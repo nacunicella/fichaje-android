@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.LocalContentColor
 import com.cunicella.fichaje.R
+import com.cunicella.fichaje.data.Preview
 import com.cunicella.fichaje.data.Privacy
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         com.cunicella.fichaje.data.Invites.init(this)
         com.cunicella.fichaje.data.Privacy.init(this)
+        com.cunicella.fichaje.data.Preview.init(this)
         com.cunicella.fichaje.data.Offline.init(this)
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -122,7 +124,7 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
     }
     var configOpen by rememberSaveable { mutableStateOf(false) }
     var profileOpen by rememberSaveable { mutableStateOf(false) }
-    val isAdmin = ui.snap?.me?.isAdmin == true
+    val isAdmin = ui.snap?.me?.isAdmin == true && !Preview.asUser
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     // permiso para la notificación de jornada en curso (Android 13+)
@@ -187,6 +189,7 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
         val offline = ui.offline || dataUi.offline
         Column(Modifier.padding(pad)) {
             if (offline) OfflineBar(ui.pending)
+            if (Preview.asUser && ui.snap?.me?.isAdmin == true) PreviewBar { Preview.set(false) }
             CompositionLocalProvider(LocalReadOnly provides dataUi.offline) {
                 Box(Modifier.weight(1f)) {
                     when (tab) {
@@ -214,6 +217,7 @@ private fun Main(onUpdateFound: (Updates.Available) -> Unit) {
             onDismiss = { accountOpen = false },
             onEditProfile = if (dataUi.store?.me != null) ({ accountOpen = false; profileOpen = true }) else null,
             onSettings = if (isAdmin) ({ accountOpen = false; configOpen = true }) else null,
+            onPreview = if (ui.snap?.me?.isAdmin == true) ({ Preview.set(!Preview.asUser); accountOpen = false }) else null,
         )
     }
     val store = dataUi.store
